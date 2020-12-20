@@ -6,7 +6,29 @@ namespace MachineLearningSpectralFittingCode
     {
         static void Main(string[] args)
         {
-            Console.WriteLine("Hello World!");
+            
+            
+            Console.WriteLine("Start");
+
+            // Read Data in 
+            // Read Modles is 
+            
+
+            // MW & Background Reddening
+            // Dust attenuation
+
+            
+            // UI
+
+            // LEARNING
+
+            // ANALYSIS
+
+            // OUTPUT
+
+            // RUN PYTHON FOR VISUALS
+
+
         }
     }
 }
