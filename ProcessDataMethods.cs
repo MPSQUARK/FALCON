@@ -1,29 +1,36 @@
 ﻿using System;
-using System.Collections.Generic;
 using System.IO;
-using System.Text;
 using System.Linq;
 using System.Text.RegularExpressions;
-using System.Globalization;
+
 
 namespace MachineLearningSpectralFittingCode
 {
     public class ProcessDataMethods
     {
 
-        public static void ReadData(string Path)
+        public static float[][] ReadData(string Path)
         {
 
-
-
             string readText = File.ReadAllText(Path);
-            string[] text = readText.Split(' ', '\n');
+            // Row-Column format
+            float[][] Data = readText.Split('\n')
+                .Select(x => x.Split(' '))
+                .Select(x => Array.ConvertAll(x, float.Parse))
+                .ToArray();
 
-            float[] result = Array.ConvertAll(text,float.Parse);
 
-            Console.WriteLine(result);
+            //for (int j = 0; j < Data.Length; j++)
+            //{
+            //    for (int i = 0; i < Data[0].Length; i++)
+            //    {
+            //        Console.Write(Data[j][i]);
+            //        Console.Write(" , ");
+            //    }
+            //    Console.Write("\n");
+            //}
 
-            return;
+            return Data;
         } 
 
 

@@ -8,7 +8,7 @@ namespace MachineLearningSpectralFittingCode
         
 
 
-        static void Main(string[] args)
+        static void Main()
         {
             string Data_path = @"C:\Users\Marcelpaw\source\repos\MachineLearningSpectralFittingCode\spec-0266-51602-0001.dat";
 
