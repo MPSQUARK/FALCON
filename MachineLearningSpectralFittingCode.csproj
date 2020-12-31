@@ -10,4 +10,8 @@
     <Optimize>true</Optimize>
   </PropertyGroup>
 
+  <ItemGroup>
+    <PackageReference Include="ILGPU" Version="0.9.2" />
+  </ItemGroup>
+
 </Project>
