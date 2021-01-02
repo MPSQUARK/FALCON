@@ -36,7 +36,28 @@ namespace MachineLearningSpectralFittingCode
         };
         // AGE OF UNIVERSE in YEARS
         readonly public static float AoU = 14.7e9f; // !!errorVaL!!
-
+        // Conversion Factor From Degrees to Radians
+        readonly public static float Deg2RadFactor = (float)Math.PI / 180f;
+        // Conversion Factor From Degrees to Radians
+        readonly public static float Rad2DegFactor = 180f / (float)Math.PI;
+        // Conversion Factor From Degrees to Radians
+        readonly public static float TwoPi = (float)Math.PI * 2f;
+        // RA(radians),Dec(radians),distance(kpc) of Galactic center in J2000
+        readonly public static Vector Galactic_Center_Equatorial = 
+            new Vector(
+                new float[3] { 
+                    ProcessDataMethods.Degree2Radians(266.40510f), 
+                    ProcessDataMethods.Degree2Radians(-28.936175f), 
+                    8.33f }, 1
+                );
+        // RA(radians),Dec(radians) of Galactic Northpole in J2000
+        readonly public static Vector Galactic_Northpole_Equatorial =
+            new Vector(
+                new float[2] {
+                    ProcessDataMethods.Degree2Radians(192.859508f),
+                    ProcessDataMethods.Degree2Radians(27.128336f)
+                    }, 1
+                );
 
 
 

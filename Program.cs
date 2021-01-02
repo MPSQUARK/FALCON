@@ -11,6 +11,8 @@ namespace MachineLearningSpectralFittingCode
 
         static void Main()
         {
+            var watch = System.Diagnostics.Stopwatch.StartNew();
+
             // PRE-INITIALISATION VARIABLE BLOCK
             List<AcceleratorId> AcceleratorIds = new List<AcceleratorId>();
             byte IndexOfVectorDevice = 1;
@@ -22,7 +24,7 @@ namespace MachineLearningSpectralFittingCode
             }
 
             // VARIABLE BLOCK
-            string Data_path = @"C:\Users\Marcelpaw\source\repos\MachineLearningSpectralFittingCode\spec-0266-51602-0001.dat";
+            string Data_path = @"C:\Users\Marcelpaw\source\repos\MachineLearningSpectralFittingCode\Data\spec-0266-51602-0001.dat";
 
             // PROGRAM START
             Console.WriteLine("Start");
@@ -30,11 +32,16 @@ namespace MachineLearningSpectralFittingCode
             // READ IN DATA
             Vector Data = new Vector(ReadData(Data_path), 3); // Data Is read in as a 2D Vector of 3 columns
 
-            Vector DataCol0 = Vector.AccessSlice(AcceleratorIds[IndexOfVectorDevice], Data, 0, 'c');
+            Spectra Spectra = new Spectra(Data_path, Config.Milky_Way_Reddening, Config.HPF_Mode, Config.N_Masked_Amstrongs);
+            Spectra = Spectra.InitialiseSpectraParameters(AcceleratorIds[1], Spectra, Data, Config.Redshift, Config.RA_DEC, Config.Velocity_Dispersion, Config.Instrument_Resolution);
 
-            //for (int i = 0; i < DataCol0.Value.Length; i++)
+            watch.Stop();
+            var elapsedMs = watch.ElapsedMilliseconds;
+            Console.WriteLine("Time Taken to reach setup " + (elapsedMs * 0.001f).ToString() + "s");
+
+            //for (int i = 0; i < TestVectorB.Value.Length; i++)
             //{
-            //    Console.WriteLine(DataCol0.Value[i]);
+            //    Console.WriteLine(TestVectorB.Value[i]);
             //}
 
 

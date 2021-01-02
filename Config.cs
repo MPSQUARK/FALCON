@@ -21,7 +21,7 @@ namespace MachineLearningSpectralFittingCode
         // Instrument Resolution !!errorNES!!
         public static float Instrument_Resolution { get; private set; } = 2000f;
         // Number masked amstrongs !!errorNES!!
-        public static ushort N_Masked_Amstrongs { get; private set; } = 0;
+        public static ushort N_Masked_Amstrongs { get; private set; } = 20;
         // Choose Model - DEFAULT = 0 : MaStar, 1 : m11
         public static byte Model_Key { get; private set; } = 0;
         // Choose Model Flavour 

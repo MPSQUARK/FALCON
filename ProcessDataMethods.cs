@@ -25,7 +25,10 @@ namespace MachineLearningSpectralFittingCode
             return Data;
         } 
 
-
+        public static float Degree2Radians(float Deg)
+        {
+            return Deg * Constants.Deg2RadFactor;
+        }
 
     }
 }
