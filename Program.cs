@@ -11,45 +11,34 @@ namespace MachineLearningSpectralFittingCode
 
         static void Main()
         {
-            //string Data_path = @"C:\Users\Marcelpaw\source\repos\MachineLearningSpectralFittingCode\spec-0266-51602-0001.dat";
-
-            //ReadData(Data_path);
-            Vector vectorA = new Vector(new float[3] { 1, 3, -5 });
-            Vector vectorB = new Vector(new float[3] { 4, -2, -1 });
-            float scalar = 5f;
-
+            // PRE-INITIALISATION VARIABLE BLOCK
             List<AcceleratorId> AcceleratorIds = new List<AcceleratorId>();
+            byte IndexOfVectorDevice = 1;
 
+            // PRE-INITIALISATION
             foreach (var accelerator in Accelerator.Accelerators)
             {
                 AcceleratorIds.Add(accelerator);
             }
 
-            //Vector Output = Vector.ScalarProduct(AcceleratorIds[1] ,vectorA, scalar);
+            // VARIABLE BLOCK
+            string Data_path = @"C:\Users\Marcelpaw\source\repos\MachineLearningSpectralFittingCode\spec-0266-51602-0001.dat";
 
+            // PROGRAM START
+            Console.WriteLine("Start");
 
-            //for (int i = 0; i < Output.value.Length; i++)
+            // READ IN DATA
+            Vector Data = new Vector(ReadData(Data_path), 3); // Data Is read in as a 2D Vector of 3 columns
+
+            Vector DataCol0 = Vector.AccessSlice(AcceleratorIds[IndexOfVectorDevice], Data, 0, 'c');
+
+            //for (int i = 0; i < DataCol0.Value.Length; i++)
             //{
-            //    Console.WriteLine(Output.value[i]);
+            //    Console.WriteLine(DataCol0.Value[i]);
             //}
 
-            float test_val =  Vector.DotProduct(AcceleratorIds[1], vectorA, vectorB);
-            Console.WriteLine(test_val);
-            
-            
 
-            Console.WriteLine("End");
-
-
-
-
-
-
-            //Console.WriteLine("Start");
-
-
-            // Read Data in 
-            // Read Modles is 
+            // Read Models is 
 
 
             // MW & Background Reddening
@@ -66,7 +55,12 @@ namespace MachineLearningSpectralFittingCode
 
             // RUN PYTHON FOR VISUALS
 
+            // PROGRAM END
+            Console.WriteLine("End");
 
         }
+
+
+
     }
 }

@@ -9,25 +9,17 @@ namespace MachineLearningSpectralFittingCode
     public class ProcessDataMethods
     {
 
-        public static float[][] ReadData(string Path)
+        public static float[] ReadData(string Path)
         {
 
             string readText = File.ReadAllText(Path);
-            // Row-Column format
-            float[][] Data = readText.Split('\n')
-                .Select(x => x.Split(' '))
-                .Select(x => Array.ConvertAll(x, float.Parse))
-                .ToArray();
 
+            readText = readText.Replace("\n", " ");
+            float[] Data = Array.ConvertAll(readText.Split(' '), float.Parse);
 
-            //for (int j = 0; j < Data.Length; j++)
+            //for (int i = 0; i < Data.Length/2; i++)
             //{
-            //    for (int i = 0; i < Data[0].Length; i++)
-            //    {
-            //        Console.Write(Data[j][i]);
-            //        Console.Write(" , ");
-            //    }
-            //    Console.Write("\n");
+            //    Console.WriteLine(Data[i]);
             //}
 
             return Data;
