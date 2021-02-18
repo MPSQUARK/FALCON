@@ -46,16 +46,16 @@ namespace MachineLearningSpectralFittingCode
         readonly public static Vector Galactic_Center_Equatorial = 
             new Vector(
                 new float[3] { 
-                    ProcessDataMethods.Degree2Radians(266.40510f), 
-                    ProcessDataMethods.Degree2Radians(-28.936175f), 
+                    UtilityMethods.Degree2Radians(266.40510f), 
+                    UtilityMethods.Degree2Radians(-28.936175f), 
                     8.33f }, 1
                 );
         // RA(radians),Dec(radians) of Galactic Northpole in J2000
         readonly public static Vector Galactic_Northpole_Equatorial =
             new Vector(
                 new float[2] {
-                    ProcessDataMethods.Degree2Radians(192.859508f),
-                    ProcessDataMethods.Degree2Radians(27.128336f)
+                    UtilityMethods.Degree2Radians(192.859508f),
+                    UtilityMethods.Degree2Radians(27.128336f)
                     }, 1
                 );
 

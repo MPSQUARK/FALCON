@@ -88,8 +88,8 @@ namespace MachineLearningSpectralFittingCode
         {
 
             float[] l_b = Eq2Gal(
-                ProcessDataMethods.Degree2Radians(RADEC[0]), 
-                ProcessDataMethods.Degree2Radians(RADEC[1])
+                UtilityMethods.Degree2Radians(RADEC[0]), 
+                UtilityMethods.Degree2Radians(RADEC[1])
                 );
 
             return Get_SFD_dust(l_b[0], l_b[1]);
@@ -109,7 +109,7 @@ namespace MachineLearningSpectralFittingCode
                 Math.Sin(dec) * Math.Cos(Constants.Galactic_Northpole_Equatorial.Value[1]) - 
                 Math.Sin(Constants.Galactic_Northpole_Equatorial.Value[1]) * Cos_dec_Mult_Cos_GNEV0, 
                 Math.Cos(dec) * Math.Sin(ra - Constants.Galactic_Northpole_Equatorial.Value[0])
-                ) + ProcessDataMethods.Degree2Radians(33f);
+                ) + UtilityMethods.Degree2Radians(33f);
 
             if (l < 0)
             {

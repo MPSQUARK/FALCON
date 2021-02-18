@@ -6,7 +6,7 @@ using System.Text.RegularExpressions;
 
 namespace MachineLearningSpectralFittingCode
 {
-    public class ProcessDataMethods
+    public class UtilityMethods
     {
 
         public static float[] ReadData(string Path)

@@ -6,7 +6,7 @@ using System.Collections.Generic;
 
 namespace MachineLearningSpectralFittingCode
 {
-    class Program : ProcessDataMethods
+    class Program : UtilityMethods
     {
 
         static void Main()
