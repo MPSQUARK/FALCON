@@ -10,8 +10,6 @@ namespace MachineLearningSpectralFittingCode
         // Example
         // readonly public static float pi = 3.14f;
         
-        // FORMAT : [ H0 , Om0 , Tcmb , Neff , mnu[3] , Ob0 ] 
-        readonly public static float[] Plank15 = new float[8] { 67.7f, 0.307f, 2.725f, 3.05f, 0f, 0f, 0.06f, 0.0486f};
         // FORMAT : { Emission Name : Emission Values }
         readonly public static Dictionary<string, float[]> Emission_lines = new Dictionary<string, float[]>
         {
@@ -34,14 +32,23 @@ namespace MachineLearningSpectralFittingCode
             { "S-II" , new float[2] { 6716.31f, 6730.68f } },
             { "Ar-III" , new float[1] { 7135.67f } },
         };
+
+
         // AGE OF UNIVERSE in YEARS
         readonly public static float AoU = 14.7e9f; // !!errorVaL!!
+
+
+
+
         // Conversion Factor From Degrees to Radians
         readonly public static float Deg2RadFactor = (float)Math.PI / 180f;
         // Conversion Factor From Degrees to Radians
         readonly public static float Rad2DegFactor = 180f / (float)Math.PI;
         // Conversion Factor From Degrees to Radians
         readonly public static float TwoPi = (float)Math.PI * 2f;
+
+
+
         // RA(radians),Dec(radians),distance(kpc) of Galactic center in J2000
         readonly public static Vector Galactic_Center_Equatorial = 
             new Vector(
@@ -59,7 +66,7 @@ namespace MachineLearningSpectralFittingCode
                     }, 1
                 );
 
-
+        // Cosmology Parameters
 
     }
 }
