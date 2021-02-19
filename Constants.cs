@@ -36,7 +36,8 @@ namespace MachineLearningSpectralFittingCode
 
         // AGE OF UNIVERSE in YEARS
         readonly public static float AoU = 14.7e9f; // !!errorVaL!!
-
+        // The speed of light in meters per second
+        readonly public static float c = 299792458f;
 
 
 
@@ -67,6 +68,13 @@ namespace MachineLearningSpectralFittingCode
                 );
 
         // Cosmology Parameters
+        readonly public static float H0units_to_invs = 3.240779289469756e-20f;
+        readonly public static float sec_to_Gyr = 3.168808781402895e-17f;
+        readonly public static float critdens_const = 1788445.339869672f; // g/cm^3
+        readonly public static float arcsec_in_radians = 4.84813681109536e-06f;
+        readonly public static float arcmin_in_radians = 0.0002908882086657216f;
+        readonly public static float a_B_c2 = 8.418013525010775e-36f;
+        readonly public static float kB_evK = 8.617333262145179e-05f; // eV/K
 
     }
 }
