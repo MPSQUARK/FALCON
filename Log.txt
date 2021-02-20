@@ -1,4 +1,9 @@
-20/02/2021 20:37:15 : Starting Pre-Initialisation
-Device Name,CPU Model,CPU Base Frequency,CPU Thread Count
-MARCEL,AMD Ryzen 9 3900X 12-Core Processor,3793,24
-20/02/2021 20:37:16 : Program Terminated 
+20/02/2021 22:03:10 : Starting Pre-Initialisation
+Device Name : MARCEL
+CPU Model : AMD Ryzen 9 3900X 12-Core Processor
+CPU Base Frequency : 3793
+CPU Thread Count : 24
+GPU Name : GeForce GTX 1060 6GB
+GPU Memory : 6
+GPU Cores : 1024
+20/02/2021 22:03:11 : Program Terminated 

@@ -67,41 +67,37 @@ namespace MachineLearningSpectralFittingCode
         public void RecordSystemInfo()
         {
 
-           // Console.WriteLine("64 Bit operating system? : {0}", Environment.Is64BitOperatingSystem ? "Yes" : "No");
+            // Console.WriteLine("64 Bit operating system? : {0}", Environment.Is64BitOperatingSystem ? "Yes" : "No");
 
             ManagementClass myManagementClass = new ManagementClass("Win32_Processor");
             ManagementObjectCollection myManagementCollection = myManagementClass.GetInstances();
             PropertyDataCollection myProperties = myManagementClass.Properties;
 
-            File.AppendAllText($"{Program.PathOfProgram}Log.txt", "CPU Name,CPU Model,CPU Base Frequency,CPU Thread Count\n");
-
             foreach (var obj in myManagementCollection)
             {
 
-                File.AppendAllText($"{Program.PathOfProgram}Log.txt", $"{obj.Properties["SystemName"].Value}".Trim()+",");
-                File.AppendAllText($"{Program.PathOfProgram}Log.txt", $"{obj.Properties["Name"].Value}".Trim() +",");
-                File.AppendAllText($"{Program.PathOfProgram}Log.txt", $"{obj.Properties["CurrentClockSpeed"].Value}".Trim() +",");
-                File.AppendAllText($"{Program.PathOfProgram}Log.txt", $"{obj.Properties["ThreadCount"].Value}".Trim()+",");
+                File.AppendAllText($"{Program.PathOfProgram}Log.txt", $"Device Name : {obj.Properties["SystemName"].Value}".Trim()+"\n");
+                File.AppendAllText($"{Program.PathOfProgram}Log.txt", $"CPU Model : {obj.Properties["Name"].Value}".Trim() +"\n");
+                File.AppendAllText($"{Program.PathOfProgram}Log.txt", $"CPU Base Frequency : {obj.Properties["CurrentClockSpeed"].Value}".Trim() +"\n");
+                File.AppendAllText($"{Program.PathOfProgram}Log.txt", $"CPU Thread Count : {obj.Properties["ThreadCount"].Value}".Trim()+"\n");
 
             }
-
-            Console.WriteLine($"Gpus = {AcceleratorIds.Count}");
 
             // Create main context
             using (var context = new Context())
             {
-                // For each available accelerator...
-                foreach (var acceleratorId in AcceleratorIds)
+                // Create default accelerator for the given accelerator id.
+                // Note that all accelerators have to be disposed before the global context is disposed
+                using (var accelerator = Accelerator.Create(context, AcceleratorIds[GPU_ids[0]]))
                 {
-                    // Create default accelerator for the given accelerator id.
-                    // Note that all accelerators have to be disposed before the global context is disposed
-                    using (var accelerator = Accelerator.Create(context, acceleratorId))
-                    {
-                        Console.WriteLine($"Name: {accelerator.Name}");
-                        Console.WriteLine($"MemorySize: {accelerator.MemorySize}");
-                        Console.WriteLine($"MaxThreadsPerGroup: {accelerator.MaxNumThreadsPerGroup}");               
-                    }
+
+                    File.AppendAllText($"{Program.PathOfProgram}Log.txt", $"GPU Name : {accelerator.Name}".Trim() + "\n");
+                    File.AppendAllText($"{Program.PathOfProgram}Log.txt", $"GPU Memory : {accelerator.MemorySize / MathF.Pow(1024f, 3f)}".Trim() + "\n");
+                    File.AppendAllText($"{Program.PathOfProgram}Log.txt", $"GPU Cores : {accelerator.MaxNumThreadsPerGroup}".Trim() + "\n");
+
+                    accelerator.Dispose();
                 }
+                context.Dispose();
             }
 
 
