@@ -1,6 +1,7 @@
 ﻿using ILGPU;
 using ILGPU.Runtime;
 using System;
+using System.IO;
 using System.Collections.Generic;
 
 
@@ -16,8 +17,9 @@ namespace MachineLearningSpectralFittingCode
 
         static void Main()
         {
-
+            var watch = System.Diagnostics.Stopwatch.StartNew();
             // PRE-INITIALISATION
+            File.WriteAllText("C:/Users/Marcelpaw/source/repos/MachineLearningSpectralFittingCode/Log.txt", "Starting Pre-Initialisation\n");
             config = new Config();
             config.GetHardware();
             cosmology = new Cosmology();
@@ -40,18 +42,27 @@ namespace MachineLearningSpectralFittingCode
 
 
             // READ IN DATA
-            //Vector Data = new Vector(ReadData(Data_path), 3); // Data Is read in as a 2D Vector of 3 columns
+            Vector Data = new Vector(ReadData(Data_path), 3); // Data Is read in as a 2D Vector of 3 columns
 
-            // Spectra Spectra = new Spectra(Data_path, Config.Milky_Way_Reddening, Config.HPF_Mode, Config.N_Masked_Amstrongs);
-            //Spectra = Spectra.InitialiseSpectraParameters(AcceleratorIds[1], Spectra, Data, Config.Redshift, Config.RA_DEC, Config.Velocity_Dispersion, Config.Instrument_Resolution);
+            // Made 1 Instance of a Spectrum
+            Spectra Spectrum = new Spectra(Data_path, config.Milky_Way_Reddening, config.HPF_Mode, config.N_Masked_Amstrongs);
+            Spectrum.InitialiseSpectraParameters(config.AcceleratorIds[config.GPU_ids[0]], Data, config.Redshift, config.RA_DEC, config.Velocity_Dispersion, config.Instrument_Resolution);
 
+            Console.WriteLine(Spectrum.Redshift);
+            Console.WriteLine(Spectrum.Distance_Luminosity);
 
-            //var watch = System.Diagnostics.Stopwatch.StartNew();
-            float ans = cosmology.luminosity_distance(0.99f);
-            Console.WriteLine($"the luminosity distance at 0.99 redshift is {ans} ");
-            //watch.Stop();
-            //var elapsedMs = watch.ElapsedMilliseconds;
-            //Console.WriteLine("Time Taken to reach setup " + (elapsedMs * 0.001f).ToString() + "s");
+            // Made 2 Instance of a Spectrum
+            Spectra Spectrum2 = new Spectra(Data_path, config.Milky_Way_Reddening, config.HPF_Mode, config.N_Masked_Amstrongs);
+            Spectrum2.InitialiseSpectraParameters(config.AcceleratorIds[config.GPU_ids[0]], Data, 0.51f, config.RA_DEC, config.Velocity_Dispersion, config.Instrument_Resolution);
+
+            Console.WriteLine(Spectrum2.Redshift);
+            Console.WriteLine(Spectrum2.Distance_Luminosity);
+
+            //float ans = cosmology.luminosity_distance(0.99f);
+            //Console.WriteLine($"the luminosity distance at 0.99 redshift is {ans} ");
+            watch.Stop();
+            var elapsedMs = watch.ElapsedMilliseconds;
+            Console.WriteLine("Time Taken to reach setup " + (elapsedMs * 0.001f).ToString() + "s");
             //Console.WriteLine($"the luminosity distance at 0.99 redshift is {ans} ");
 
             //for (int i = 0; i < TestVectorB.Value.Length; i++)
@@ -79,6 +90,7 @@ namespace MachineLearningSpectralFittingCode
 
             // PROGRAM END
             Console.WriteLine("End");
+            File.AppendAllText("C:/Users/Marcelpaw/source/repos/MachineLearningSpectralFittingCode/Log.txt", "Program Terminated \n");
 
         }
 

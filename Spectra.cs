@@ -47,36 +47,36 @@ namespace MachineLearningSpectralFittingCode
 
 
 
-        public static Spectra InitialiseSpectraParameters(AcceleratorId acceleratorId, Spectra spectrum, Vector Data, float Redshift, float[] RA_DEC, float Velocity_Disp, float instrument_resolution) // also include emission lines masking
+        public void InitialiseSpectraParameters(AcceleratorId acceleratorId, Vector Data, float Redshift, float[] RA_DEC, float Velocity_Disp, float instrument_resolution) // also include emission lines masking
         {
-            spectrum.Wavelength = Vector.AccessSlice(acceleratorId, Data, 0, 'c');
-            spectrum.Flux = Vector.AccessSlice(acceleratorId, Data, 1, 'c');
-            spectrum.Error = Vector.AccessSlice(acceleratorId, Data, 2, 'c');
-            spectrum.Redshift = Redshift;
-            spectrum.RA_DEC = RA_DEC;
-            spectrum.Velocity_Dispersion = Velocity_Disp;
-            spectrum.Instrument_Resolution = instrument_resolution;
+            this.Wavelength = Vector.AccessSlice(acceleratorId, Data, 0, 'c');
+            this.Flux = Vector.AccessSlice(acceleratorId, Data, 1, 'c');
+            this.Error = Vector.AccessSlice(acceleratorId, Data, 2, 'c');
+            this.Redshift = Redshift;
+            this.RA_DEC = RA_DEC;
+            this.Velocity_Dispersion = Velocity_Disp;
+            this.Instrument_Resolution = instrument_resolution;
 
             // CALCULATE LUMINOSITY DISTANCE in CM
-            spectrum.Bad_Flags = Vector.Fill(acceleratorId, 1, spectrum.Wavelength.Value.Length);
-            spectrum.Restframe_Wavelength = Vector.ScalarOperation(acceleratorId, spectrum.Wavelength, (1 + spectrum.Redshift), '/');
-            spectrum.Trust_Flag = 1;
-            spectrum.ObjID = 0;
+            this.Distance_Luminosity = Program.cosmology.luminosity_distance(this.Redshift);
+
+            this.Bad_Flags = Vector.Fill(acceleratorId, 1, this.Wavelength.Value.Length);
+            this.Restframe_Wavelength = Vector.ScalarOperation(acceleratorId, this.Wavelength, (1 + this.Redshift), '/');
+            this.Trust_Flag = 1;
+            this.ObjID = 0;
 
             // Remove Bad data from the spectrum
-            spectrum.MaskEmissionlines();
+            this.MaskEmissionlines();
 
-            if (spectrum.Milky_Way_Reddening)
+            if (this.Milky_Way_Reddening)
             {
-                spectrum.ebv_MW = spectrum.GetDustRADEC(spectrum.RA_DEC, "ebv");
+                this.ebv_MW = this.GetDustRADEC(this.RA_DEC, "ebv");
             }
             else
             {
-                spectrum.ebv_MW = 0f;
+                this.ebv_MW = 0f;
             }
 
-
-            return spectrum;
         }
 
         private void MaskEmissionlines()
