@@ -8,7 +8,7 @@ using System.Text;
 
 namespace MachineLearningSpectralFittingCode
 {
-    class Cosmology
+    public class Cosmology
     {
 
         float
@@ -244,20 +244,27 @@ namespace MachineLearningSpectralFittingCode
 
         }
  
-        public float luminosity_distance(AcceleratorId acceleratorId, float redshift)
+        public float luminosity_distance(float redshift)
         {
-            return (1f + redshift) * comoving_transverse_distance(acceleratorId, redshift);
+            return (1f + redshift) * comoving_transverse_distance(redshift);
         }
 
-        public float comoving_transverse_distance(AcceleratorId acceleratorId, float redshift)
+        public float comoving_transverse_distance(float redshift)
         {
-            float dc = integral_comoving_distance(acceleratorId, redshift);
+            float dc = integral_comoving_distance(redshift);
             return dc;
         }
 
-        public float integral_comoving_distance(AcceleratorId acceleratorId, float redshift)
+        public float integral_comoving_distance(float redshift)
         {
-            return this.hubble_distance * GPU_Integration(acceleratorId, redshift, 1e-8f, this.inv_efunc_scalar_args); //Integrate(inv_efunc_scalar, redshift, 1e-8f, inv_efunc_scalar_args);
+            if (Program.config.HasGPU)
+            {
+                return this.hubble_distance * GPU_Integration(Program.config.AcceleratorIds[Program.config.GPU_ids[0]], redshift, 1e-8f, this.inv_efunc_scalar_args);
+            }
+            else
+            {
+                return this.hubble_distance * Integrate(inv_efunc_scalar, redshift, 1e-8f, inv_efunc_scalar_args);
+            }
         }
 
 
