@@ -3,6 +3,12 @@ using ILGPU.Runtime;
 using System.Collections.Generic;
 using System.Text;
 
+using System.Management; // Uninstall later when system analytics unnessessary
+using System.IO;// Uninstall later when system analytics unnessessary
+using ILGPU;
+
+
+
 namespace MachineLearningSpectralFittingCode
 {
     public class Config
@@ -21,11 +27,13 @@ namespace MachineLearningSpectralFittingCode
 
         public void GetHardware()
         {
+
             foreach (var accelerator in Accelerator.Accelerators)
             {
+
                 string type = accelerator.AcceleratorType.ToString();
                 float id = 0;
-                if (type == "Cuda" || type == "OpenCl")
+                if (type == "Cuda" || type == "OpenCL")
                 {
                     this.AcceleratorIds.Add(accelerator);
                     this.GPU_ids.Add((byte)id);
@@ -55,6 +63,49 @@ namespace MachineLearningSpectralFittingCode
             }
         }
 
+        // To be used for code performace analysis accross various hardware
+        public void RecordSystemInfo()
+        {
+
+           // Console.WriteLine("64 Bit operating system? : {0}", Environment.Is64BitOperatingSystem ? "Yes" : "No");
+
+            ManagementClass myManagementClass = new ManagementClass("Win32_Processor");
+            ManagementObjectCollection myManagementCollection = myManagementClass.GetInstances();
+            PropertyDataCollection myProperties = myManagementClass.Properties;
+
+            File.AppendAllText($"{Program.PathOfProgram}Log.txt", "CPU Name,CPU Model,CPU Base Frequency,CPU Thread Count\n");
+
+            foreach (var obj in myManagementCollection)
+            {
+
+                File.AppendAllText($"{Program.PathOfProgram}Log.txt", $"{obj.Properties["SystemName"].Value}".Trim()+",");
+                File.AppendAllText($"{Program.PathOfProgram}Log.txt", $"{obj.Properties["Name"].Value}".Trim() +",");
+                File.AppendAllText($"{Program.PathOfProgram}Log.txt", $"{obj.Properties["CurrentClockSpeed"].Value}".Trim() +",");
+                File.AppendAllText($"{Program.PathOfProgram}Log.txt", $"{obj.Properties["ThreadCount"].Value}".Trim()+",");
+
+            }
+
+            Console.WriteLine($"Gpus = {AcceleratorIds.Count}");
+
+            // Create main context
+            using (var context = new Context())
+            {
+                // For each available accelerator...
+                foreach (var acceleratorId in AcceleratorIds)
+                {
+                    // Create default accelerator for the given accelerator id.
+                    // Note that all accelerators have to be disposed before the global context is disposed
+                    using (var accelerator = Accelerator.Create(context, acceleratorId))
+                    {
+                        Console.WriteLine($"Name: {accelerator.Name}");
+                        Console.WriteLine($"MemorySize: {accelerator.MemorySize}");
+                        Console.WriteLine($"MaxThreadsPerGroup: {accelerator.MaxNumThreadsPerGroup}");               
+                    }
+                }
+            }
+
+
+        }
 
 
 

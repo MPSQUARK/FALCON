@@ -1,2 +1,4 @@
-Starting Pre-Initialisation
-Program Terminated 
+20/02/2021 20:37:15 : Starting Pre-Initialisation
+Device Name,CPU Model,CPU Base Frequency,CPU Thread Count
+MARCEL,AMD Ryzen 9 3900X 12-Core Processor,3793,24
+20/02/2021 20:37:16 : Program Terminated 
