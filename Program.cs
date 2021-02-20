@@ -39,7 +39,7 @@ namespace MachineLearningSpectralFittingCode
             cosmology.Initialise();
 
             var watch = System.Diagnostics.Stopwatch.StartNew();
-            float ans = cosmology.luminosity_distance(0.99f);
+            float ans = cosmology.luminosity_distance(AcceleratorIds[1], 0.99f);
             watch.Stop();
             var elapsedMs = watch.ElapsedMilliseconds;
             Console.WriteLine("Time Taken to reach setup " + (elapsedMs * 0.001f).ToString() + "s");

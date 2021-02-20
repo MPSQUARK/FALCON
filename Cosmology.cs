@@ -1,4 +1,7 @@
-﻿using System;
+﻿using ILGPU;
+using ILGPU.Runtime;
+using ILGPU.Algorithms;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -23,18 +26,20 @@ namespace MachineLearningSpectralFittingCode
             Neff;
         bool flat = true;
         float[] m_nu;
+        double
+            H0_s,
+            critical_density0, 
+            Ogamma0;
+
 
         float
             Odm0,
-            Ogamma0,
             Onu0,
             Ok0,
-            Tnu,
+            Tnu0,
             h,
             hubble_distance,
             hubble_time,
-            H0_s,
-            critical_density0,
             neff_per_nu;
         int
             nneutrinos,
@@ -72,8 +77,8 @@ namespace MachineLearningSpectralFittingCode
             this.h = this.H0 * 0.01f;
             this.hubble_distance = (Constants.c * 0.001f) / this.H0;
             this.H0_s = this.H0 * Constants.H0units_to_invs;
-            this.hubble_time = Constants.sec_to_Gyr / this.H0_s;
-            this.critical_density0 = Constants.critdens_const * MathF.Pow(this.H0_s, 2f);
+            this.hubble_time = (float)(Constants.sec_to_Gyr / this.H0_s);
+            this.critical_density0 = Constants.critdens_const * Math.Pow(this.H0_s, 2);
             this.nneutrinos = (int)MathF.Floor(this.Neff);
 
             this.massivenu = false;
@@ -104,8 +109,8 @@ namespace MachineLearningSpectralFittingCode
 
             if (this.Tcmb0 > 0)
             {
-                this.Ogamma0 = Constants.a_B_c2 * MathF.Pow(this.Tcmb0, 4f) / this.critical_density0;
-                this.Tnu = 0.7137658555036082f * this.Tcmb0;
+                this.Ogamma0 = (Constants.a_B_c2 * Math.Pow(this.Tcmb0, 4d) / this.critical_density0);
+                this.Tnu0 = 0.7137658555036082f * this.Tcmb0;
 
                 if (this.massivenu)
                 {
@@ -114,15 +119,16 @@ namespace MachineLearningSpectralFittingCode
 
                     for (int i = 0; i < length; i++)
                     {
-                        this.nu_y[i] = this.massivenu_mass[i] / (Constants.kB_evK * this.Tcmb0);
+                        this.nu_y[i] = (float)(this.massivenu_mass[i] / (Constants.kB_evK * this.Tnu0));
                     }
 
-                    this.Onu0 = this.Ogamma0 * nu_relative_density(0f);
+
+                    this.Onu0 = (float)(this.Ogamma0 * nu_relative_density(0f));
 
                 }
                 else
                 {
-                    this.Onu0 = 0.22710731766f * this.Neff * this.Ogamma0;
+                    this.Onu0 = (float)(0.22710731766f * this.Neff * this.Ogamma0);
                 }
             }
             else
@@ -130,7 +136,7 @@ namespace MachineLearningSpectralFittingCode
                 throw new Exception("Class Cosmology : func Initialise - Unexpected value of Tcmb0, should be tcmb0 > 0 Kelvin");
             }
 
-            this.Ode0 = 1f - (this.Om0 + this.Ogamma0 + this.Onu0);
+            this.Ode0 = (float)(1f - (this.Om0 + this.Ogamma0 + this.Onu0));
             this.Ok0 = 0; // Assuming no curvature
 
             if (!this.massivenu)
@@ -140,7 +146,7 @@ namespace MachineLearningSpectralFittingCode
                 {
                     Om0 = this.Om0,
                     Ode0 = this.Ode0,
-                    Or0 = this.Ogamma0 + this.Onu0
+                    Or0 = (float)(this.Ogamma0 + this.Onu0)
                 };
             }
             else
@@ -150,14 +156,18 @@ namespace MachineLearningSpectralFittingCode
                 {
                     Om0 = this.Om0,
                     Ode0 = this.Ode0,
-                    Ogamma0 = this.Ogamma0,
+                    Ogamma0 = (float)this.Ogamma0,
                     neff_per_nu = this.neff_per_nu,
                     nmasslessnu = this.nmasslessnu,
                     nu_y = this.nu_y
                 };
             }
 
-            Console.WriteLine(this.hubble_distance);
+            // Further optimisations
+
+
+
+
         }
 
 
@@ -233,21 +243,21 @@ namespace MachineLearningSpectralFittingCode
             }
 
         }
-
-        public float luminosity_distance(float redshift)
+ 
+        public float luminosity_distance(AcceleratorId acceleratorId, float redshift)
         {
-            return (1f + redshift) * comoving_transverse_distance(redshift);
+            return (1f + redshift) * comoving_transverse_distance(acceleratorId, redshift);
         }
 
-        public float comoving_transverse_distance(float redshift)
+        public float comoving_transverse_distance(AcceleratorId acceleratorId, float redshift)
         {
-            float dc = integral_comoving_distance(redshift);
+            float dc = integral_comoving_distance(acceleratorId, redshift);
             return dc;
         }
 
-        public float integral_comoving_distance(float redshift)
+        public float integral_comoving_distance(AcceleratorId acceleratorId, float redshift)
         {
-            return this.hubble_distance * Integrate(inv_efunc_scalar, redshift, 1e-8f, inv_efunc_scalar_args);
+            return this.hubble_distance * GPU_Integration(acceleratorId, redshift, 1e-8f, this.inv_efunc_scalar_args); //Integrate(inv_efunc_scalar, redshift, 1e-8f, inv_efunc_scalar_args);
         }
 
 
@@ -264,6 +274,49 @@ namespace MachineLearningSpectralFittingCode
             return vals.Sum();
         }
 
+
+        // Integrates the cosmology func to get luminosity distance
+        private float GPU_Integration(AcceleratorId acceleratorId, float z, float dz, inv_efunc_scalar_args_struct args)
+        {
+            int length = (int)(z / dz);
+
+            using var context = new Context();
+            context.EnableAlgorithms();
+
+            using var accelerator = Accelerator.Create(context, acceleratorId);
+
+            
+
+            var kernel = accelerator.LoadAutoGroupedStreamKernel<Index1, ArrayView< float >, float, float, float, float, float, float, float>(GPU_IntegrationKernal);
+
+            #region
+
+
+            var buffer = accelerator.Allocate<float>(length);
+            buffer.MemSetToZero();
+
+            kernel(buffer.Length, buffer.View, dz, args.Ogamma0, args.Om0, args.Ode0, args.neff_per_nu, args.nmasslessnu, args.nu_y[0]);
+
+            accelerator.Synchronize();
+
+            float[] Output = buffer.GetAsArray();
+
+            buffer.Dispose();
+
+            return Output.Sum();
+
+            #endregion
+        }
+
+        // KERNELS
+        static void GPU_IntegrationKernal(Index1 index, ArrayView<float> OutPut, float dz, float Ogamm0, float Om0, float Ode0, float neff_per_nu, float nmasslessnu, float nu_y)
+        {
+            float opz = 1f + (dz * index);
+            float k = 0.3173f / opz;
+            float Or0 = (Ogamm0 * (1f + 0.22710731766f * neff_per_nu * (nmasslessnu + XMath.Pow(1f + XMath.Pow(k * nu_y, 1.83f), 0.54644808743f))));
+
+            OutPut[index] = XMath.Rsqrt(XMath.Pow(opz, 3f) * (opz * Or0 + Om0) + Ode0) * dz; 
+        }
 
 
     }
