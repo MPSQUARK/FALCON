@@ -9,7 +9,7 @@ namespace MachineLearningSpectralFittingCode
 {
     class Program : UtilityMethods
     {
-
+        // Singleton Instances
         public static Config config;
         public static Cosmology cosmology;
 
@@ -26,8 +26,6 @@ namespace MachineLearningSpectralFittingCode
 
             //var watch = System.Diagnostics.Stopwatch.StartNew();
 
-            
-            
 
 
             // VARIABLE BLOCK
