@@ -292,12 +292,7 @@ namespace MachineLearningSpectralFittingCode
 
             using var accelerator = Accelerator.Create(context, acceleratorId);
 
-            
-
             var kernel = accelerator.LoadAutoGroupedStreamKernel<Index1, ArrayView< float >, float, float, float, float, float, float, float>(GPU_IntegrationKernal);
-
-            #region
-
 
             var buffer = accelerator.Allocate<float>(length);
             buffer.MemSetToZero();
@@ -311,8 +306,6 @@ namespace MachineLearningSpectralFittingCode
             buffer.Dispose();
 
             return Output.Sum();
-
-            #endregion
         }
 
         // KERNELS

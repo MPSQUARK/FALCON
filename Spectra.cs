@@ -1,6 +1,8 @@
-﻿using ILGPU.Runtime;
+﻿using ILGPU;
+using ILGPU.Runtime;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text;
 
 namespace MachineLearningSpectralFittingCode
@@ -49,24 +51,40 @@ namespace MachineLearningSpectralFittingCode
 
         public void InitialiseSpectraParameters(AcceleratorId acceleratorId, Vector Data, float Redshift, float[] RA_DEC, float Velocity_Disp, float instrument_resolution) // also include emission lines masking
         {
-            this.Wavelength = Vector.AccessSlice(acceleratorId, Data, 0, 'c');
-            this.Flux = Vector.AccessSlice(acceleratorId, Data, 1, 'c');
-            this.Error = Vector.AccessSlice(acceleratorId, Data, 2, 'c');
+            this.Wavelength = Vector.AccessSlice(acceleratorId, Data, 0, 'c');  // GPU Batch 1
+            this.Flux = Vector.AccessSlice(acceleratorId, Data, 1, 'c');        // GPU Batch 1
+            this.Error = Vector.AccessSlice(acceleratorId, Data, 2, 'c');       // GPU Batch 1
             this.Redshift = Redshift;
             this.RA_DEC = RA_DEC;
             this.Velocity_Dispersion = Velocity_Disp;
             this.Instrument_Resolution = instrument_resolution;
 
             // CALCULATE LUMINOSITY DISTANCE in CM
-            this.Distance_Luminosity = Program.cosmology.luminosity_distance(this.Redshift);
+            this.Distance_Luminosity = UtilityMethods.Mpc2cm(Program.cosmology.luminosity_distance(this.Redshift)); // GPU Batch 1
 
-            this.Bad_Flags = Vector.Fill(acceleratorId, 1, this.Wavelength.Value.Length);
-            this.Restframe_Wavelength = Vector.ScalarOperation(acceleratorId, this.Wavelength, (1 + this.Redshift), '/');
+            //this.Bad_Flags = Vector.Fill(acceleratorId, 1, this.Wavelength.Value.Length); // Unnessessary 
+            this.Restframe_Wavelength = Vector.ScalarOperation(acceleratorId, this.Wavelength, (1 + this.Redshift), '/'); // GPU Batch 2
             this.Trust_Flag = 1;
             this.ObjID = 0;
 
+
             // Remove Bad data from the spectrum
-            this.MaskEmissionlines();
+
+            // Generates the Filter Mask
+            float[] BadDataMask = this.GenerateDataMask(acceleratorId, this.Flux, this.Error); // GPU Batch 2
+
+
+            if (BadDataMask.Contains(0f))
+            {
+                // Filter Out the bad data
+                Console.WriteLine("Warning Bad Data Detected");
+            }
+            else
+            {
+                Console.WriteLine("Data is Fine");
+            }
+
+            // Else just proceed as the Data is Fine
 
             if (this.Milky_Way_Reddening)
             {
@@ -79,10 +97,48 @@ namespace MachineLearningSpectralFittingCode
 
         }
 
-        private void MaskEmissionlines()
+        private float[] GenerateDataMask(AcceleratorId acceleratorId, Vector flux, Vector Error) // Also add emission lines filter
         {
+
+            using var context = new Context();
+            context.EnableAlgorithms();
+
+            using var accelerator = Accelerator.Create(context, acceleratorId);
+
+            var kernel = accelerator.LoadAutoGroupedStreamKernel<Index1, ArrayView<float>, ArrayView<float>, ArrayView<float>>(GPU_GenerateDataMaskKernal);
+
+            var buffer = accelerator.Allocate<float>(flux.Value.Length);
+            var buffer2 = accelerator.Allocate<float>(flux.Value.Length);
+            var buffer3 = accelerator.Allocate<float>(Error.Value.Length);
             
+            buffer.MemSetToZero();
+            buffer2.MemSetToZero();
+            buffer3.MemSetToZero();
+
+            buffer2.CopyFrom(flux.Value, 0, 0, flux.Value.Length);
+            buffer3.CopyFrom(Error.Value, 0, 0, Error.Value.Length);
+
+
+            kernel(buffer.Length, buffer.View, buffer2.View, buffer3.View);
+
+            accelerator.Synchronize();
+
+            float[] Output = buffer.GetAsArray();
+
+            buffer.Dispose();
+
+            return Output;
         }
+
+        // GPU KERNEL
+        static void GPU_GenerateDataMaskKernal(Index1 index, ArrayView<float> OutPut, ArrayView<float> flux, ArrayView<float> error)
+        {
+            // False means Exclude/Bad Data, True means Good Data
+            OutPut[index] = Convert.ToSingle(!(float.IsNaN(flux[index]) || float.IsInfinity(flux[index]) || (flux[index] <= 0f) || float.IsNaN(error[index]) || float.IsInfinity(error[index])));
+        }
+
+
+
 
         private float GetDustRADEC(float[] RADEC, string dustmap, bool interpolate = true)
         {

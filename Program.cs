@@ -24,10 +24,10 @@ namespace MachineLearningSpectralFittingCode
             config = new Config();
             cosmology = new Cosmology();
             cosmology.Initialise();
-            config.RecordSystemInfo();
+            //config.RecordSystemInfo();
 
 
-            //var watch = System.Diagnostics.Stopwatch.StartNew();
+            var watch = System.Diagnostics.Stopwatch.StartNew();
 
 
 
@@ -43,11 +43,13 @@ namespace MachineLearningSpectralFittingCode
 
 
             // READ IN DATA
-            //Vector Data = new Vector(ReadData(Data_path), 3); // Data Is read in as a 2D Vector of 3 columns
+            Vector Data = new Vector(ReadData(Data_path), 3); // Data Is read in as a 2D Vector of 3 columns
+
+
 
             // Made 1 Instance of a Spectrum
-            //Spectra Spectrum = new Spectra(Data_path, config.Milky_Way_Reddening, config.HPF_Mode, config.N_Masked_Amstrongs);
-            //Spectrum.InitialiseSpectraParameters(config.AcceleratorIds[config.GPU_ids[0]], Data, config.Redshift, config.RA_DEC, config.Velocity_Dispersion, config.Instrument_Resolution);
+            Spectra Spectrum = new Spectra(Data_path, config.Milky_Way_Reddening, config.HPF_Mode, config.N_Masked_Amstrongs);
+            Spectrum.InitialiseSpectraParameters(config.AcceleratorIds[config.GPU_ids[0]], Data, config.Redshift, config.RA_DEC, config.Velocity_Dispersion, config.Instrument_Resolution);
 
             //Console.WriteLine(Spectrum.Redshift);
             //Console.WriteLine(Spectrum.Distance_Luminosity);
@@ -61,9 +63,9 @@ namespace MachineLearningSpectralFittingCode
 
             //float ans = cosmology.luminosity_distance(0.99f);
             //Console.WriteLine($"the luminosity distance at 0.99 redshift is {ans} ");
-            //watch.Stop();
-            //var elapsedMs = watch.ElapsedMilliseconds;
-            //Console.WriteLine("Time Taken to reach setup " + (elapsedMs * 0.001f).ToString() + "s");
+            watch.Stop();
+            var elapsedMs = watch.ElapsedMilliseconds;
+            Console.WriteLine("Time Taken to reach setup " + (elapsedMs * 0.001f).ToString() + "s");
             //Console.WriteLine($"the luminosity distance at 0.99 redshift is {ans} ");
 
             //for (int i = 0; i < TestVectorB.Value.Length; i++)

@@ -30,5 +30,11 @@ namespace MachineLearningSpectralFittingCode
             return Deg * Constants.Deg2RadFactor;
         }
 
+        public static float Mpc2cm(float Mpc)
+        {
+            return 3.08567758128e+24f * Mpc;
+        }
+
+
     }
 }
