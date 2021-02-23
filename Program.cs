@@ -3,8 +3,7 @@ using ILGPU.Runtime;
 using System;
 using System.IO;
 using System.Collections.Generic;
-
-
+using System.Threading.Tasks;
 
 namespace MachineLearningSpectralFittingCode
 {
@@ -28,7 +27,7 @@ namespace MachineLearningSpectralFittingCode
             cosmology.Initialise();
             //config.RecordSystemInfo();
 
-
+            Random rnd = new Random();
             var watch = System.Diagnostics.Stopwatch.StartNew();
 
 
@@ -44,8 +43,18 @@ namespace MachineLearningSpectralFittingCode
 
 
             // Made 1 Instance of a Spectrum
-            Spectra Spectrum = new Spectra(Data_path, config.Milky_Way_Reddening, config.HPF_Mode, config.N_Masked_Amstrongs);
-            Spectrum.InitialiseSpectraParameters(gpu, Data, config.Redshift, config.RA_DEC, config.Velocity_Dispersion, config.Instrument_Resolution);
+
+            Parallel.For(0, 100, i => {
+                Spectra Spectrum = new Spectra(Data_path, config.Milky_Way_Reddening, config.HPF_Mode, config.N_Masked_Amstrongs);
+                Spectrum.InitialiseSpectraParameters(gpu, Data, (float)rnd.NextDouble(), config.RA_DEC, config.Velocity_Dispersion, config.Instrument_Resolution);
+                Spectrum = null;
+                }
+            );
+
+
+            // Need to detect system memory and Garbage collect if code exceeds threshold
+            System.GC.Collect();
+
 
             //Console.WriteLine(Spectrum.Redshift);
             //Console.WriteLine(Spectrum.Distance_Luminosity);
@@ -58,7 +67,8 @@ namespace MachineLearningSpectralFittingCode
             //Console.WriteLine(Spectrum2.Distance_Luminosity);
 
             //float ans = cosmology.luminosity_distance(0.99f);
-            Console.WriteLine($"the luminosity distance at {Spectrum.Redshift} redshift is {Spectrum.Distance_Luminosity} ");
+            //Console.WriteLine($"the luminosity distance at {Spectrum.Redshift} redshift is {Spectrum.Distance_Luminosity} ");
+            //Console.WriteLine($"the luminosity distance at {0.99f} redshift is {ans} ");
             watch.Stop();
             var elapsedMs = watch.ElapsedMilliseconds;
             Console.WriteLine("Time Taken to reach setup " + (elapsedMs * 0.001f).ToString() + "s");
