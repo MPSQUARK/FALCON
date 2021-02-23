@@ -308,6 +308,31 @@ namespace MachineLearningSpectralFittingCode
             return Output.Sum();
         }
 
+        // Integrates the cosmology func to get luminosity distance Asynchronously
+        public async Task<float> GPU_IntegrationAsync(Accelerator gpu, float z, float dz)
+        {
+            int length = (int)(z / dz);
+
+            AcceleratorStream Stream = gpu.CreateStream();
+
+            var kernelWithStream = gpu.LoadAutoGroupedKernel<Index1, ArrayView<float>, float, float, float, float, float, float, float>(GPU_IntegrationKernal);
+
+            var buffer = gpu.Allocate<float>(length);
+            buffer.MemSetToZero();
+
+            kernelWithStream(Stream, buffer.Length, buffer.View, dz, (float)this.Ogamma0, this.Om0, this.Ode0, this.neff_per_nu, this.nmasslessnu, this.nu_y[0]);
+
+            Stream.Synchronize();
+
+            float[] Output = buffer.GetAsArray();
+
+            buffer.Dispose();
+
+            Stream.Dispose();
+
+            return (1f + z) * Output.Sum();
+        }
+
 
 
         // KERNELS

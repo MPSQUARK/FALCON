@@ -52,13 +52,48 @@ namespace MachineLearningSpectralFittingCode
 
         public async void InitialiseSpectraParameters(Accelerator gpu, Vector Data, float Redshift, float[] RA_DEC, float Velocity_Disp, float instrument_resolution) // also include emission lines masking
         {
-            
-            // Set Long tasks to execute
-            Task<Vector> AccessTask1 = Vector.AccessSliceAsync(gpu, Data, 0, 'c');  // WAVELENGTH
-            Task<Vector> AccessTask2 = Vector.AccessSliceAsync(gpu, Data, 1, 'c');  // FLUX
-            Task<Vector> AccessTask3 = Vector.AccessSliceAsync(gpu, Data, 2, 'c');  // ERROR
+            bool warn = false;
 
-            // Meanwhile execute this block of code
+            retryWave:
+            try
+            {
+                // Set Long tasks to execute
+                this.Wavelength = await Vector.AccessSliceAsync(gpu, Data, 0, 'c');  // WAVELENGTH
+            }
+            catch (Exception)
+            {
+                warn = true;
+                await Task.Delay(100);
+                goto retryWave;
+            }
+
+            retryFlux:
+            try
+            {
+                // Set Long tasks to execute
+                this.Flux = await Vector.AccessSliceAsync(gpu, Data, 1, 'c');  // FLUX
+            }
+            catch (Exception)
+            {
+                warn = true;
+                await Task.Delay(100);
+                goto retryFlux;
+            }
+
+            retryErr:
+            try
+            {
+                // Set Long tasks to execute
+                this.Error = await Vector.AccessSliceAsync(gpu, Data, 2, 'c');  // ERROR
+            }
+            catch (Exception)
+            {
+                warn = true;
+                await Task.Delay(100);
+                goto retryErr;
+            }
+
+
             this.Redshift = Redshift;
             this.RA_DEC = RA_DEC;
             this.Velocity_Dispersion = Velocity_Disp;
@@ -74,33 +109,64 @@ namespace MachineLearningSpectralFittingCode
             {
                 this.ebv_MW = 0f;
             }
+        
 
+            retryRestWave:
+            try
+            {
+                this.Restframe_Wavelength = Vector.ScalarOperation(gpu, this.Wavelength, (1 + this.Redshift), '/');
+            }
+            catch (Exception)
+            {
+                warn = true;
+                await Task.Delay(100);
+                goto retryRestWave;
+            }
 
-            // Await for Wavelength to be processed
-            this.Wavelength = await AccessTask1;
-            this.Restframe_Wavelength = Vector.ScalarOperation(gpu, this.Wavelength, (1 + this.Redshift), '/'); 
-
-            // Await for Flux and Error to 
-            this.Flux = await AccessTask2;
-            this.Error = await AccessTask3;
             // Remove Bad data from the spectrum
             // Generates the Filter Mask
-            float[] BadDataMask = this.GenerateDataMask(gpu, this.Flux, this.Error);
-
-
-            if (BadDataMask.Contains(0f))
+            retryBadDat:
+            try
             {
-                // Filter Out the bad data
-                Console.WriteLine("Warning Bad Data Detected");
+                float[] BadDataMask = this.GenerateDataMask(gpu, this.Flux, this.Error);
+                
+                if (BadDataMask.Contains(0f))
+                {
+                    // Filter Out the bad data
+                    Console.WriteLine("Warning Bad Data Detected");
+                }
+                else
+                {
+                    //Console.WriteLine("Data is Fine");
+                }
+                // Else just proceed as the Data is Fine   
             }
-            else
+            catch (Exception)
             {
-                Console.WriteLine("Data is Fine");
+                warn = true;
+                await Task.Delay(100);
+                goto retryBadDat;
             }
-            // Else just proceed as the Data is Fine       
 
-            // CALCULATE LUMINOSITY DISTANCE in CM
-            this.Distance_Luminosity = UtilityMethods.Mpc2cm(Program.cosmology.luminosity_distance(this.Redshift));
+
+            
+            retryDistLum:
+            try
+            {
+                // CALCULATE LUMINOSITY DISTANCE in CM
+                this.Distance_Luminosity = UtilityMethods.Mpc2cm(await Program.cosmology.GPU_IntegrationAsync(gpu, this.Redshift, 1e-8f)); //Program.cosmology.luminosity_distance(this.Redshift));
+            }
+            catch (Exception)
+            {
+                warn = true;
+                await Task.Delay(100);
+                goto retryDistLum;
+            }
+
+            if (warn)
+            {
+                Console.WriteLine("Warning Code Executed Slower Than Expected - Insufficient Memory");
+            }
 
         }
 
@@ -132,6 +198,8 @@ namespace MachineLearningSpectralFittingCode
             float[] Output = buffer.GetAsArray();
 
             buffer.Dispose();
+            buffer2.Dispose();
+            buffer3.Dispose();
 
             Stream.Dispose();
 

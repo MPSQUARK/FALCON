@@ -40,9 +40,11 @@ namespace MachineLearningSpectralFittingCode
             buffer.MemSetToZero();
 
             kernelWithStream(Stream, buffer.Length, buffer.View, Value);
+
             Stream.Synchronize();
 
             float[] Output = buffer.GetAsArray();
+
             buffer.Dispose();
 
             Stream.Dispose();

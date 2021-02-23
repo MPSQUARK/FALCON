@@ -44,7 +44,7 @@ namespace MachineLearningSpectralFittingCode
 
             // Made 1 Instance of a Spectrum
 
-            Parallel.For(0, 100, i => {
+            Parallel.For(0, 500, i => {
                 Spectra Spectrum = new Spectra(Data_path, config.Milky_Way_Reddening, config.HPF_Mode, config.N_Masked_Amstrongs);
                 Spectrum.InitialiseSpectraParameters(gpu, Data, (float)rnd.NextDouble(), config.RA_DEC, config.Velocity_Dispersion, config.Instrument_Resolution);
                 Spectrum = null;
@@ -53,7 +53,7 @@ namespace MachineLearningSpectralFittingCode
 
 
             // Need to detect system memory and Garbage collect if code exceeds threshold
-            System.GC.Collect();
+            //System.GC.Collect();
 
 
             //Console.WriteLine(Spectrum.Redshift);
