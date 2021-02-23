@@ -4,6 +4,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using System.Threading.Tasks;
 
 namespace MachineLearningSpectralFittingCode
 {
@@ -49,29 +50,42 @@ namespace MachineLearningSpectralFittingCode
 
 
 
-        public void InitialiseSpectraParameters(AcceleratorId acceleratorId, Vector Data, float Redshift, float[] RA_DEC, float Velocity_Disp, float instrument_resolution) // also include emission lines masking
+        public async void InitialiseSpectraParameters(Accelerator gpu, Vector Data, float Redshift, float[] RA_DEC, float Velocity_Disp, float instrument_resolution) // also include emission lines masking
         {
-            this.Wavelength = Vector.AccessSlice(acceleratorId, Data, 0, 'c');  // GPU Batch 1
-            this.Flux = Vector.AccessSlice(acceleratorId, Data, 1, 'c');        // GPU Batch 1
-            this.Error = Vector.AccessSlice(acceleratorId, Data, 2, 'c');       // GPU Batch 1
+            
+            // Set Long tasks to execute
+            Task<Vector> AccessTask1 = Vector.AccessSliceAsync(gpu, Data, 0, 'c');  // WAVELENGTH
+            Task<Vector> AccessTask2 = Vector.AccessSliceAsync(gpu, Data, 1, 'c');  // FLUX
+            Task<Vector> AccessTask3 = Vector.AccessSliceAsync(gpu, Data, 2, 'c');  // ERROR
+
+            // Meanwhile execute this block of code
             this.Redshift = Redshift;
             this.RA_DEC = RA_DEC;
             this.Velocity_Dispersion = Velocity_Disp;
             this.Instrument_Resolution = instrument_resolution;
-
-            // CALCULATE LUMINOSITY DISTANCE in CM
-            this.Distance_Luminosity = UtilityMethods.Mpc2cm(Program.cosmology.luminosity_distance(this.Redshift)); // GPU Batch 1
-
-            //this.Bad_Flags = Vector.Fill(acceleratorId, 1, this.Wavelength.Value.Length); // Unnessessary 
-            this.Restframe_Wavelength = Vector.ScalarOperation(acceleratorId, this.Wavelength, (1 + this.Redshift), '/'); // GPU Batch 2
             this.Trust_Flag = 1;
             this.ObjID = 0;
 
+            if (this.Milky_Way_Reddening)
+            {
+                this.ebv_MW = this.GetDustRADEC(this.RA_DEC, "ebv");
+            }
+            else
+            {
+                this.ebv_MW = 0f;
+            }
 
+
+            // Await for Wavelength to be processed
+            this.Wavelength = await AccessTask1;
+            this.Restframe_Wavelength = Vector.ScalarOperation(gpu, this.Wavelength, (1 + this.Redshift), '/'); 
+
+            // Await for Flux and Error to 
+            this.Flux = await AccessTask2;
+            this.Error = await AccessTask3;
             // Remove Bad data from the spectrum
-
             // Generates the Filter Mask
-            float[] BadDataMask = this.GenerateDataMask(acceleratorId, this.Flux, this.Error); // GPU Batch 2
+            float[] BadDataMask = this.GenerateDataMask(gpu, this.Flux, this.Error);
 
 
             if (BadDataMask.Contains(0f))
@@ -83,33 +97,25 @@ namespace MachineLearningSpectralFittingCode
             {
                 Console.WriteLine("Data is Fine");
             }
+            // Else just proceed as the Data is Fine       
 
-            // Else just proceed as the Data is Fine
-
-            if (this.Milky_Way_Reddening)
-            {
-                this.ebv_MW = this.GetDustRADEC(this.RA_DEC, "ebv");
-            }
-            else
-            {
-                this.ebv_MW = 0f;
-            }
+            // CALCULATE LUMINOSITY DISTANCE in CM
+            this.Distance_Luminosity = UtilityMethods.Mpc2cm(Program.cosmology.luminosity_distance(this.Redshift));
 
         }
 
-        private float[] GenerateDataMask(AcceleratorId acceleratorId, Vector flux, Vector Error) // Also add emission lines filter
+
+
+        private float[] GenerateDataMask(Accelerator gpu, Vector flux, Vector Error) // Also add emission lines filter
         {
 
-            using var context = new Context();
-            context.EnableAlgorithms();
+            AcceleratorStream Stream = gpu.CreateStream();
 
-            using var accelerator = Accelerator.Create(context, acceleratorId);
+            var kernelWithStream = gpu.LoadAutoGroupedKernel<Index1, ArrayView<float>, ArrayView<float>, ArrayView<float>>(GPU_GenerateDataMaskKernal);
 
-            var kernel = accelerator.LoadAutoGroupedStreamKernel<Index1, ArrayView<float>, ArrayView<float>, ArrayView<float>>(GPU_GenerateDataMaskKernal);
-
-            var buffer = accelerator.Allocate<float>(flux.Value.Length);
-            var buffer2 = accelerator.Allocate<float>(flux.Value.Length);
-            var buffer3 = accelerator.Allocate<float>(Error.Value.Length);
+            var buffer = gpu.Allocate<float>(flux.Value.Length);
+            var buffer2 = gpu.Allocate<float>(flux.Value.Length);
+            var buffer3 = gpu.Allocate<float>(Error.Value.Length);
             
             buffer.MemSetToZero();
             buffer2.MemSetToZero();
@@ -119,13 +125,15 @@ namespace MachineLearningSpectralFittingCode
             buffer3.CopyFrom(Error.Value, 0, 0, Error.Value.Length);
 
 
-            kernel(buffer.Length, buffer.View, buffer2.View, buffer3.View);
+            kernelWithStream(Stream, buffer.Length, buffer.View, buffer2.View, buffer3.View);
 
-            accelerator.Synchronize();
+            Stream.Synchronize();
 
             float[] Output = buffer.GetAsArray();
 
             buffer.Dispose();
+
+            Stream.Dispose();
 
             return Output;
         }

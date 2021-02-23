@@ -2,6 +2,7 @@
 using ILGPU.Runtime;
 using System;
 using System.Linq;
+using System.Threading.Tasks;
 
 namespace MachineLearningSpectralFittingCode
 {
@@ -28,21 +29,23 @@ namespace MachineLearningSpectralFittingCode
         public int Columns { get; set; } // Defines the number of Columns in a Vector STARTS AT 1
 
         // Creates a Uniform Vector where all values are = Value
-        public static Vector Fill(AcceleratorId acceleratorId, float Value, int Size, int Columns = 1)
+        public static Vector Fill(Accelerator gpu, float Value, int Size, int Columns = 1)
         {
-            using var context = new Context();
-            using var accelerator = Accelerator.Create(context, acceleratorId);
 
-            var kernel = accelerator.LoadAutoGroupedStreamKernel<Index1, ArrayView<float>, float>(FillKernel);
+            AcceleratorStream Stream = gpu.CreateStream();
 
-            var buffer = accelerator.Allocate<float>(Size); // Input
+            var kernelWithStream = gpu.LoadAutoGroupedKernel<Index1, ArrayView<float>, float>(FillKernel);
+
+            var buffer = gpu.Allocate<float>(Size); // Input
             buffer.MemSetToZero();
 
-            kernel(buffer.Length, buffer.View, Value);
-            accelerator.Synchronize();
+            kernelWithStream(Stream, buffer.Length, buffer.View, Value);
+            Stream.Synchronize();
 
             float[] Output = buffer.GetAsArray();
             buffer.Dispose();
+
+            Stream.Dispose();
 
             return new Vector(Output, Columns);
         }
@@ -60,8 +63,9 @@ namespace MachineLearningSpectralFittingCode
             return vector.Value[row*vector.Columns + col];
         }
         // Access a ROW or COLUMN from a 2D Vector
-        public static Vector AccessSlice(AcceleratorId acceleratorId, Vector vector, int row_col_index , char row_col)
+        public static Vector AccessSlice(Accelerator gpu, Vector vector, int row_col_index , char row_col)
         {
+
             if (vector.Columns == 1)
             {
                 throw new Exception("Input Vector must be a 2D Vector");
@@ -84,14 +88,13 @@ namespace MachineLearningSpectralFittingCode
                     throw new Exception("Invalid slice char selector, choose 'r' for row or 'c' for column");
             }
 
-            using var context = new Context();
-            using var accelerator = Accelerator.Create(context, acceleratorId);
+            AcceleratorStream Stream = gpu.CreateStream();
 
-            var kernel = accelerator.LoadAutoGroupedStreamKernel<Index1, ArrayView<float>, ArrayView<float>, ArrayView<int>>(AccessSliceKernal);
+            var kernelWithStream = gpu.LoadAutoGroupedKernel<Index1, ArrayView<float>, ArrayView<float>, ArrayView<int>>(AccessSliceKernal);
 
-            var buffer = accelerator.Allocate<float>(OutPutVectorLength);
-            var buffer2 = accelerator.Allocate<float>(vector.Value.Length);
-            var buffer3 = accelerator.Allocate<int>(5);
+            var buffer = gpu.Allocate<float>(OutPutVectorLength);
+            var buffer2 = gpu.Allocate<float>(vector.Value.Length);
+            var buffer3 = gpu.Allocate<int>(5);
 
             buffer.MemSetToZero();
             buffer2.MemSetToZero();
@@ -100,9 +103,9 @@ namespace MachineLearningSpectralFittingCode
             buffer2.CopyFrom(vector.Value, 0, 0, vector.Value.Length);
             buffer3.CopyFrom(ChangeSelectLength, 0, 0, ChangeSelectLength.Length);
 
-            kernel(OutPutVectorLength, buffer.View, buffer2.View, buffer3.View);
+            kernelWithStream(Stream, OutPutVectorLength, buffer.View, buffer2.View, buffer3.View);
 
-            accelerator.Synchronize();
+            Stream.Synchronize();
 
             float[] Output = buffer.GetAsArray();
 
@@ -110,8 +113,68 @@ namespace MachineLearningSpectralFittingCode
             buffer2.Dispose();
             buffer3.Dispose();
 
+            Stream.Dispose();
+
             return new Vector(Output);
         }
+#pragma warning disable CS1998 // Async method lacks 'await' operators and will run synchronously
+        public static async Task<Vector> AccessSliceAsync(Accelerator gpu, Vector vector, int row_col_index, char row_col)
+#pragma warning restore CS1998 // Async method lacks 'await' operators and will run synchronously
+        {            
+
+            if (vector.Columns == 1)
+            {
+                throw new Exception("Input Vector must be a 2D Vector");
+            }
+
+            int[] ChangeSelectLength;
+            int OutPutVectorLength;
+
+            switch (row_col)
+            {
+                case 'r':
+                    ChangeSelectLength = new int[5] { 0, 1, row_col_index, 0, vector.Columns };
+                    OutPutVectorLength = vector.Columns;
+                    break;
+                case 'c':
+                    ChangeSelectLength = new int[5] { 1, 0, 0, row_col_index, vector.Columns };
+                    OutPutVectorLength = vector.Value.Length / vector.Columns;
+                    break;
+                default:
+                    throw new Exception("Invalid slice char selector, choose 'r' for row or 'c' for column");
+            }
+
+
+            AcceleratorStream Stream = gpu.CreateStream();
+
+            var kernelWithStream = gpu.LoadAutoGroupedKernel<Index1, ArrayView<float>, ArrayView<float>, ArrayView<int>>(AccessSliceKernal);
+
+            var buffer = gpu.Allocate<float>(OutPutVectorLength);
+            var buffer2 = gpu.Allocate<float>(vector.Value.Length);
+            var buffer3 = gpu.Allocate<int>(5);
+
+            buffer.MemSetToZero();
+            buffer2.MemSetToZero();
+            buffer3.MemSetToZero();
+
+            buffer2.CopyFrom(vector.Value, 0, 0, vector.Value.Length);
+            buffer3.CopyFrom(ChangeSelectLength, 0, 0, ChangeSelectLength.Length);
+
+            kernelWithStream(Stream, OutPutVectorLength, buffer.View, buffer2.View, buffer3.View);
+
+            Stream.Synchronize();
+
+            float[] Output = buffer.GetAsArray();
+
+            buffer.Dispose();
+            buffer2.Dispose();
+            buffer3.Dispose();
+
+            Stream.Dispose();
+
+            return new Vector(Output);
+        }
+
         // KERNEL
         static void AccessSliceKernal(Index1 index, ArrayView<float> OutPut, ArrayView<float> Input, ArrayView<int> ChangeSelectLength)
         {
@@ -125,50 +188,44 @@ namespace MachineLearningSpectralFittingCode
 
 
         // SCALAR OPERATIONS : Vector * Scalar, Vector / Scalar, Vector +|- Scalar
-        public static Vector ScalarOperation(AcceleratorId acceleratorId, Vector vector, float scalar, char operation = '*')
+        public static Vector ScalarOperation(Accelerator gpu, Vector vector, float scalar, char operation = '*')
         {
 
-            using var context = new Context();
-            using var accelerator = Accelerator.Create(context, acceleratorId);
-            
-            Action<ILGPU.Index1, ILGPU.ArrayView<float>, ILGPU.ArrayView<float>, float> kernel;
-            var buffer = accelerator.Allocate<float>(vector.Value.Length);
-            var buffer2 = accelerator.Allocate<float>(vector.Value.Length);
+            AcceleratorStream Stream = gpu.CreateStream();
+
+            var buffer = gpu.Allocate<float>(vector.Value.Length);
+            var buffer2 = gpu.Allocate<float>(vector.Value.Length);
+
             buffer.MemSetToZero();
             buffer2.MemSetToZero();
 
+            buffer2.CopyFrom(vector.Value, 0, 0, vector.Value.Length);
+
+            var kernelWithStream = gpu.LoadAutoGroupedKernel<Index1, ArrayView<float>, ArrayView<float>, float>(ScalarProductKernal);
 
             switch (operation)
             {
                 case '*':
-                    kernel = accelerator.LoadAutoGroupedStreamKernel<Index1, ArrayView<float>, ArrayView<float>, float>(ScalarProductKernal);
-
-                    buffer2.CopyFrom(vector.Value, 0, 0, vector.Value.Length);
-                    kernel(buffer.Length, buffer.View, buffer2.View, scalar);
-
+                    kernelWithStream = gpu.LoadAutoGroupedKernel<Index1, ArrayView<float>, ArrayView<float>, float>(ScalarProductKernal);
                     break;
                 case '/':
-                    kernel = accelerator.LoadAutoGroupedStreamKernel<Index1, ArrayView<float>, ArrayView<float>, float>(ScalarDivideKernal);
-
-                    buffer2.CopyFrom(vector.Value, 0, 0, vector.Value.Length);
-                    kernel(buffer.Length, buffer.View, buffer2.View, scalar);
-
+                    kernelWithStream = gpu.LoadAutoGroupedKernel<Index1, ArrayView<float>, ArrayView<float>, float>(ScalarDivideKernal);
                     break;
                 case '+':
-                    kernel = accelerator.LoadAutoGroupedStreamKernel<Index1, ArrayView<float>, ArrayView<float>, float>(ScalarSumKernal);
-
-                    buffer2.CopyFrom(vector.Value, 0, 0, vector.Value.Length);
-                    kernel(buffer.Length, buffer.View, buffer2.View, scalar);
-
+                    kernelWithStream = gpu.LoadAutoGroupedKernel<Index1, ArrayView<float>, ArrayView<float>, float>(ScalarSumKernal);
                     break;
             }
 
-            accelerator.Synchronize();
+            kernelWithStream(Stream, buffer.Length, buffer.View, buffer2.View, scalar);
+
+            Stream.Synchronize();
 
             float[] Output = buffer.GetAsArray();
 
             buffer.Dispose();
             buffer2.Dispose();
+
+            Stream.Dispose();
 
             return new Vector(Output);
         }
@@ -189,43 +246,40 @@ namespace MachineLearningSpectralFittingCode
 
 
         // COMPOUND SCALAR OPERATIONS : Vector * Scalar1 +|- Scaler2, Vector / Scalar1 +|- Scalar2
-        public static Vector ScalarCompoundOperation(AcceleratorId acceleratorId, Vector vector, float Multiple, float Adder, string operation = "*+")
+        public static Vector ScalarCompoundOperation(Accelerator gpu, Vector vector, float Multiple, float Adder, string operation = "*+")
         {
 
-            using var context = new Context();
-            using var accelerator = Accelerator.Create(context, acceleratorId);
-            
-            Action<ILGPU.Index1, ILGPU.ArrayView<float>, ILGPU.ArrayView<float>, float, float> kernel;
-            var buffer = accelerator.Allocate<float>(vector.Value.Length);
-            var buffer2 = accelerator.Allocate<float>(vector.Value.Length);
+            AcceleratorStream Stream = gpu.CreateStream();
+
+            var kernelWithStream = gpu.LoadAutoGroupedKernel<Index1, ArrayView<float>, ArrayView<float>, float, float>(ScalarProductSumKernal);
+
+            var buffer = gpu.Allocate<float>(vector.Value.Length);
+            var buffer2 = gpu.Allocate<float>(vector.Value.Length);
             buffer.MemSetToZero();
             buffer2.MemSetToZero();
 
+            buffer2.CopyFrom(vector.Value, 0, 0, vector.Value.Length);
 
             switch (operation)
             {
                 case "*+":
-                    kernel = accelerator.LoadAutoGroupedStreamKernel<Index1, ArrayView<float>, ArrayView<float>, float, float>(ScalarProductSumKernal);
-
-                    buffer2.CopyFrom(vector.Value, 0, 0, vector.Value.Length);
-                    kernel(buffer.Length, buffer.View, buffer2.View, Multiple, Adder);
-
+                    kernelWithStream = gpu.LoadAutoGroupedKernel<Index1, ArrayView<float>, ArrayView<float>, float, float>(ScalarProductSumKernal);
                     break;
                 case "/+":
-                    kernel = accelerator.LoadAutoGroupedStreamKernel<Index1, ArrayView<float>, ArrayView<float>, float, float>(ScalarDivideSumKernal);
-
-                    buffer2.CopyFrom(vector.Value, 0, 0, vector.Value.Length);
-                    kernel(buffer.Length, buffer.View, buffer2.View, Multiple, Adder);
-
+                    kernelWithStream = gpu.LoadAutoGroupedKernel<Index1, ArrayView<float>, ArrayView<float>, float, float>(ScalarDivideSumKernal);
                     break;
             }
 
-            accelerator.Synchronize();
+            kernelWithStream(Stream, buffer.Length, buffer.View, buffer2.View, Multiple, Adder);
+
+            Stream.Synchronize();
 
             float[] Output = buffer.GetAsArray();
 
             buffer.Dispose();
             buffer2.Dispose();
+
+            Stream.Dispose();
 
             return new Vector(Output);
         }
@@ -242,21 +296,21 @@ namespace MachineLearningSpectralFittingCode
 
 
         // Multiplies 2 Vectors Element by Element
-        public static Vector ConsecutiveProduct(AcceleratorId acceleratorId, Vector vectorA, Vector vectorB)
+        public static Vector ConsecutiveProduct(Accelerator gpu, Vector vectorA, Vector vectorB)
         {
             if (vectorA.Value.Length != vectorB.Value.Length)
             {
                 throw new IndexOutOfRangeException("Vector A and Vector B provided MUST be of EQUAL length" );
             }
 
-            using var context = new Context();
-            using var accelerator = Accelerator.Create(context, acceleratorId);
-            
-            var kernel = accelerator.LoadAutoGroupedStreamKernel<Index1, ArrayView<float>, ArrayView<float>, ArrayView<float>>(ConsecutiveProductKernal);
+            AcceleratorStream Stream = gpu.CreateStream();
 
-            var buffer = accelerator.Allocate<float>(vectorA.Value.Length); // Input
-            var buffer2 = accelerator.Allocate<float>(vectorA.Value.Length); // Input
-            var buffer3 = accelerator.Allocate<float>(vectorA.Value.Length); // Output
+            var kernelWithStream = gpu.LoadAutoGroupedKernel<Index1, ArrayView<float>, ArrayView<float>, ArrayView<float>>(ConsecutiveProductKernal);
+
+            var buffer = gpu.Allocate<float>(vectorA.Value.Length); // Input
+            var buffer2 = gpu.Allocate<float>(vectorA.Value.Length); // Input
+            var buffer3 = gpu.Allocate<float>(vectorA.Value.Length); // Output
+
             buffer.MemSetToZero();
             buffer2.MemSetToZero();
             buffer3.MemSetToZero();
@@ -264,15 +318,17 @@ namespace MachineLearningSpectralFittingCode
             buffer.CopyFrom(vectorA.Value, 0, 0, vectorA.Value.Length);
             buffer2.CopyFrom(vectorB.Value, 0, 0, vectorB.Value.Length);
 
-            kernel(buffer.Length, buffer.View, buffer2.View, buffer3.View);
+            kernelWithStream(Stream, buffer.Length, buffer.View, buffer2.View, buffer3.View);
 
-            accelerator.Synchronize();
+            Stream.Synchronize();
 
             float[] Output = buffer3.GetAsArray();
 
             buffer.Dispose();
             buffer2.Dispose();
             buffer3.Dispose();
+
+            Stream.Dispose();
 
             return new Vector(Output);
         }
@@ -287,15 +343,15 @@ namespace MachineLearningSpectralFittingCode
 
 
         // DOT PRODUCT : Vector dot Scalar, Vector dot Vector
-        public static float DotProduct(AcceleratorId acceleratorId, Vector vectorA, object param )
+        public static float DotProduct(Accelerator gpu, Vector vectorA, object param )
         {
             if (param.GetType() == typeof(Vector))
             {
-                return ConsecutiveProduct(acceleratorId, vectorA, (Vector)param).Value.Sum();
+                return ConsecutiveProduct(gpu, vectorA, (Vector)param).Value.Sum();
             }
             else if (param.GetType() == typeof(float))
             {
-                return ScalarOperation(acceleratorId, vectorA, (float)param).Value.Sum();
+                return ScalarOperation(gpu, vectorA, (float)param).Value.Sum();
             }
             else 
             {

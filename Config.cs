@@ -20,8 +20,8 @@ namespace MachineLearningSpectralFittingCode
         }
 
         // CONFIG OF HARDWARE   
-        public List<AcceleratorId> AcceleratorIds = new List<AcceleratorId>();
-        public List<byte> GPU_ids = new List<byte>();
+        private List<AcceleratorId> AcceleratorIds = new List<AcceleratorId>();
+        private List<byte> GPU_ids = new List<byte>();
         public bool HasGPU = false;
         public bool Has_Multi_GPU  = false;
 
@@ -61,6 +61,10 @@ namespace MachineLearningSpectralFittingCode
             {
                 Console.WriteLine("Warning no GPU detected");
             }
+
+            Program.context = new Context();
+            Program.context.EnableAlgorithms();
+            Program.gpu = Accelerator.Create(Program.context, AcceleratorIds[GPU_ids[0]]);
         }
 
         // To be used for code performace analysis accross various hardware
