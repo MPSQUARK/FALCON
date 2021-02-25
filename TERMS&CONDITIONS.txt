@@ -1,0 +1,100 @@
+#   MachineLearningSpectralFittingCode
+#   Developed by Marcel Pawelczyk
+#
+#   PROGRAM STILL IN DEVELOPMENT
+# 
+#   BY USING THIS 'SOFTWARE' 'YOU' AGREE TO THE 'TERMS AND CONDITIONS'
+#
+#   'SOFTWARE' intended for personal, educational and/or academic use FREE of charge
+
+########################## TERMS AND CONDITIONS #############################
+ 
+THE 'SOFTWARE' IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
+FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE CONTRIBUTORS
+OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
+WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS WITH THE SOFTWARE.  
+
+#
+#      - 'YOU' do NOT have the permission to sell, lisence, sublisence or 
+#        in any other way benefit financially from this 'software'. This 
+#        'SOFTWARE' is to remain free of charge for anyone who wishes to use it.
+#
+#      - 'YOU' do NOT have the permission to redistribute, this 'SOFTWARE', this
+#         includes but is not limited to the 'SOFTWARE' as a whole, any part of 
+#         the 'SOFTWARE', the files or code contained in the 'SOFTWARE' or 
+#         any version of the 'SOFTWARE' modified by 'YOU'.
+#
+#      - 'YOU' are granted the permission/s to download, copy, modify and 
+#        alter the 'software' in any way FOR 'personal/educational/academic use', 
+#        ONLY IF you do NOT distribute the downloaded, copied or in any other 
+#        way shape or form modified version of this 'software' AND IF any 
+#        modifications made DO NOT violate the terms of use OR the 
+#        copyright lisence of any 'third party software' 
+#        contained within this 'software'.
+#
+#      - In any situation when this 'SOFTWARE' is used in another product,
+#        program, software or equivalent, or in research the appropriate 
+#        reference/acreditation/citation must be performed in an easily accessible 
+#        visible location appropriate to the situation, for example in the 
+#        bibliography at the end of an article, or in the credits of a 
+#        program/software or equivalent.
+#    
+
+##########################     TERMINOLOGY      #############################   
+   
+#     - 'SOFTWARE' - refers to all the folders, files, source code, and
+#                    everything else contained within this repository
+#
+#     - 'YOU'      - refers to the person/s, who are using or have 
+#                    used this 'software', this includes individuals,
+#                    company and/or organisation.
+#
+#     - 'TERMS AND CONDITIONS' - refers to the terms 'you' agree to when
+#                                using this 'software'
+#
+#     - 'THIRD PARTY SOFTWARE' - refers to any software incorporated into this
+#                                'SOFTWARE' which has not been developed by the
+#                                contributors of this 'software'
+#
+
+
+##############     Third Party Terms Of Use & License's     ################# 
+
+********************************************************************************
+                                  ILGPU License
+********************************************************************************
+University of Illinois/NCSA Open Source License
+Copyright (c) 2016-2020 Marcel Koester
+All rights reserved.
+
+Developed by:           Marcel Koester (m4rs@m4rs.net)
+                        www.ilgpu.net
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of
+this software and associated documentation files (the "Software"), to deal with
+the Software without restriction, including without limitation the rights to
+use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
+the Software, and to permit persons to whom the Software is furnished to do so,
+subject to the following conditions:
+
+    * Redistributions of source code must retain the above copyright notice,
+      this list of conditions and the following disclaimers.
+
+    * Redistributions in binary form must reproduce the above copyright notice,
+      this list of conditions and the following disclaimers in the documentation
+      and/or other materials provided with the distribution.
+
+    * Neither the names of ILGPU, Marcel Koester, nor the names of its
+      contributors may be used to endorse or promote products derived from this
+      Software without specific prior written permission.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
+FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE CONTRIBUTORS
+OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
+WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS WITH THE SOFTWARE.
+
+
