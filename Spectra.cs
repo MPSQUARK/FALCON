@@ -154,7 +154,8 @@ namespace MachineLearningSpectralFittingCode
             try
             {
                 // CALCULATE LUMINOSITY DISTANCE in CM
-                this.Distance_Luminosity = UtilityMethods.Mpc2cm(await Program.cosmology.GPU_IntegrationAsync(gpu, this.Redshift, 1e-8f)); //Program.cosmology.luminosity_distance(this.Redshift));
+                // Two versions to Test Normal and Optimised Algo. no noticable performance difference noted so far
+                this.Distance_Luminosity = UtilityMethods.Mpc2cm(await Program.cosmology.GPU_IntegrationOptiAsync(gpu, this.Redshift, 1e-8f)); //Program.cosmology.luminosity_distance(this.Redshift));
             }
             catch (Exception)
             {

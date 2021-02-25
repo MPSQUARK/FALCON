@@ -54,6 +54,13 @@ namespace MachineLearningSpectralFittingCode
         private Func<float, inv_efunc_scalar_args_struct, float> inv_efunc_scalar;
         private inv_efunc_scalar_args_struct inv_efunc_scalar_args;
 
+        // optimisation parameters
+        float
+            Or0_OptiA,
+            Or0_OptiB,
+            nuyp_Opti;
+
+
         public Cosmology()
         {
             this.Oc0 = 0.2589f;
@@ -166,8 +173,9 @@ namespace MachineLearningSpectralFittingCode
 
             // Further optimisations
 
-
-
+            this.Or0_OptiA = (float)(this.Ogamma0 + (0.22710731766f * this.neff_per_nu * this.Ogamma0 * this.nmasslessnu));
+            this.Or0_OptiB = (float)(0.22710731766f * this.neff_per_nu * this.Ogamma0);
+            this.nuyp_Opti = MathF.Pow(this.nu_y[0], 1.83f);
 
         }
 
@@ -330,21 +338,58 @@ namespace MachineLearningSpectralFittingCode
 
             Stream.Dispose();
 
-            return (1f + z) * Output.Sum();
+            return (1f + z) * this.hubble_distance * Output.Sum();
         }
+
+
+        // Integrates the cosmology func to get luminosity distance Asynchronously
+        public async Task<float> GPU_IntegrationOptiAsync(Accelerator gpu, float z, float dz)
+        {
+            int length = (int)(z / dz);
+
+            AcceleratorStream Stream = gpu.CreateStream();
+
+            var kernelWithStream = gpu.LoadAutoGroupedKernel<Index1, ArrayView<float>, float, float, float, float, float, float, float>(GPU_IntegrationOptiKernal);
+
+            var buffer = gpu.Allocate<float>(length);
+            buffer.MemSetToZero();
+
+            kernelWithStream(Stream, buffer.Length, buffer.View, dz, this.Om0, this.Ode0, this.nmasslessnu, this.Or0_OptiA, this.Or0_OptiB, this.nuyp_Opti);
+
+            Stream.Synchronize();
+
+            float[] Output = buffer.GetAsArray();
+
+            buffer.Dispose();
+
+            Stream.Dispose();
+
+            return (1f + z) * this.hubble_distance * Output.Sum();
+        }
+
 
 
 
         // KERNELS
-        static void GPU_IntegrationKernal(Index1 index, ArrayView<float> OutPut, float dz, float Ogamm0, float Om0, float Ode0, float neff_per_nu, float nmasslessnu, float nu_y)
+        static void GPU_IntegrationKernal(Index1 index, ArrayView<float> OutPut, float dz, float Ogamma0, float Om0, float Ode0, float neff_per_nu, float nmasslessnu, float nu_y)
         {
             float opz = 1f + (dz * index);
             float k = 0.3173f / opz;
-            float Or0 = (Ogamm0 * (1f + 0.22710731766f * neff_per_nu * (nmasslessnu + XMath.Pow(1f + XMath.Pow(k * nu_y, 1.83f), 0.54644808743f))));
+            float Or0 = (Ogamma0 * (1f + 0.22710731766f * neff_per_nu * (nmasslessnu + XMath.Pow(1f + XMath.Pow(k * nu_y, 1.83f), 0.54644808743f))));
 
             OutPut[index] = XMath.Rsqrt(XMath.Pow(opz, 3f) * (opz * Or0 + Om0) + Ode0) * dz; 
         }
 
+        static void GPU_IntegrationOptiKernal(Index1 index, ArrayView<float> OutPut, float dz, float Om0, float Ode0, float nmasslessnu, float Or0_OptiA, float Or0_OptiB, float nu_yp)
+        {
+            float opz = 1f + (dz * index);
+            float k = 0.3173f / opz;
+            //float Or0 = (Ogamma0 * (1f + 0.22710731766f * neff_per_nu * (nmasslessnu + XMath.Pow(1f + XMath.Pow(k * nu_y, 1.83f), 0.54644808743f))));
+
+            float Or0 = Or0_OptiA + Or0_OptiB * XMath.Pow(1f + XMath.Pow(k, 1.83f) * nu_yp, 0.54644808743f);
+
+            OutPut[index] = XMath.Rsqrt(XMath.Pow(opz, 3f) * (opz * Or0 + Om0) + Ode0) * dz;
+        }
 
     }
 
