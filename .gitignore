@@ -338,3 +338,4 @@ ASALocalRun/
 
 # BeatPulse healthcheck temp database
 healthchecksdb
+/StellarPopulationModels/MaStar_SSP_v0.2.fits
