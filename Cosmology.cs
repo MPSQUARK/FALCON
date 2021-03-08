@@ -384,7 +384,6 @@ namespace MachineLearningSpectralFittingCode
         {
             float opz = 1f + (dz * index);
             float k = 0.3173f / opz;
-            //float Or0 = (Ogamma0 * (1f + 0.22710731766f * neff_per_nu * (nmasslessnu + XMath.Pow(1f + XMath.Pow(k * nu_y, 1.83f), 0.54644808743f))));
 
             float Or0 = Or0_OptiA + Or0_OptiB * XMath.Pow(1f + XMath.Pow(k, 1.83f) * nu_yp, 0.54644808743f);
 

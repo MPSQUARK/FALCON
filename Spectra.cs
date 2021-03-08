@@ -8,7 +8,7 @@ using System.Threading.Tasks;
 
 namespace MachineLearningSpectralFittingCode
 {
-    public class Spectra
+    public class Spectra : SPModel
     {
         public Spectra(string path,
                        bool milky_Way_Reddening = true,
@@ -163,6 +163,8 @@ namespace MachineLearningSpectralFittingCode
                 await Task.Delay(100);
                 goto retryDistLum;
             }
+
+            this.InitialiseSPModel(this.Velocity_Dispersion);
 
             if (warn)
             {

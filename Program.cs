@@ -5,6 +5,7 @@ using System.IO;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 
+
 namespace MachineLearningSpectralFittingCode
 {
     class Program
@@ -18,7 +19,7 @@ namespace MachineLearningSpectralFittingCode
 
         static void Main()
         {
-            //var watch = System.Diagnostics.Stopwatch.StartNew();
+            var watch = System.Diagnostics.Stopwatch.StartNew();
 
             // PRE-INITIALISATION
             File.WriteAllText($"{PathOfProgram}Log.txt", $"{System.DateTime.Now} : Starting Pre-Initialisation\n");
@@ -37,24 +38,24 @@ namespace MachineLearningSpectralFittingCode
             // PROGRAM START
             Console.WriteLine("Start");
 
+
             // READ IN DATA
             Vector Data = new Vector(UtilityMethods.ReadData(Data_path), 3); // Data Is read in as a 2D Vector of 3 columns
 
 
             // Made 1 Instance of a Spectrum
 
-            Random rnd = new Random(561348315);
-            //var watch = System.Diagnostics.Stopwatch.StartNew();
-
-            for (int i = 0; i < 100; i++)
+            Parallel.For(0, 200, i =>
             {
                 Spectra Spectrum = new Spectra(Data_path, config.Milky_Way_Reddening, config.HPF_Mode, config.N_Masked_Amstrongs);
-                Spectrum.InitialiseSpectraParameters(gpu, Data, (float)rnd.NextDouble(), config.RA_DEC, config.Velocity_Dispersion, config.Instrument_Resolution);
+                Spectrum.InitialiseSpectraParameters(gpu, Data, config.Redshift, config.RA_DEC, config.Velocity_Dispersion, config.Instrument_Resolution);
                 Spectrum = null;
             }
-            //watch.Stop();
-            //var elapsedMs = watch.ElapsedMilliseconds;
-            //Console.WriteLine("Time Taken to reach setup " + (elapsedMs * 0.001f).ToString() + "s");
+            );
+
+            watch.Stop();
+            var elapsedMs = watch.ElapsedMilliseconds;
+            Console.WriteLine("Time Taken to reach setup " + (elapsedMs * 0.001f).ToString() + "s");
 
 
             //Console.WriteLine(Spectrum.Redshift);

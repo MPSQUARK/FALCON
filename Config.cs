@@ -6,8 +6,7 @@ using System.Text;
 using System.Management; // Uninstall later when system analytics unnessessary
 using System.IO;// Uninstall later when system analytics unnessessary
 using ILGPU;
-
-
+using nom.tam.fits;
 
 namespace MachineLearningSpectralFittingCode
 {
@@ -17,6 +16,11 @@ namespace MachineLearningSpectralFittingCode
         public Config()
         {
             GetHardware();
+            // If the Model is a MaStar model type
+            if (this.Model_Key % 2 == 0)
+            {
+                SetMaStarData();
+            }
         }
 
         // CONFIG OF HARDWARE   
@@ -126,12 +130,23 @@ namespace MachineLearningSpectralFittingCode
         public float Instrument_Resolution { get; private set; } = 2000f;
         // Number masked amstrongs !!errorNES!!
         public ushort N_Masked_Amstrongs { get; private set; } = 20;
-        // Choose Model - DEFAULT = 0 : MaStar, 1 : m11
-        public byte Model_Key { get; private set; } = 0;
-        // Choose Model Flavour 
-        // FOR Model 0 - DEFAULT = 0 : E-MaStar, 1 : Th-MaStar
-        // FOR Model 1 - DEFAULT = 0 : MILES, 1 : STELIB, 2 : ELODIE, 3 : MARCS (kr imf only)
-        public byte Model_Flavour { get; private set; } = 0;
+
+        /* Model Key Selector 
+         * first 3 bits denote the Model type 
+         * last  5 bits denote the Model flavour
+         * e.g. 0b00000_001 => m11
+         * e.g. 0b00001_001 => m11 - Miles
+         * e.g. 0b00010_001 => m11 - Stelib
+         * e.g. 0b00100_001 => m11 - Elodie
+         * e.g. 0b01000_001 => m11 - Marcs (kr imf only)
+         * e.g. 0b10000_001 => m11 - **NO ENTRY**
+         * e.g. 0b00000_010 => MaStar
+         * e.g. 0b00001_010 => MaStar - Th
+         * e.g. 0b00010_010 => MaStar - E
+         * e.g. 0b00000_100 => **NO ENTRY** 
+        */
+        public byte Model_Key { get; private set; } = 0b00010_010;
+
         // Choose IMF : DEFAULT 0 : Kroupa, 1 : Salpeter
         public byte IMF { get; private set; } = 0;
         // Min and Max Age of Models
@@ -156,6 +171,22 @@ namespace MachineLearningSpectralFittingCode
         #endregion
 
         // CONFIG OF AI
+
+
+        // CONFIG PRE-INITIALISE DATA
+        public void SetMaStarData()
+        {
+            try
+            {
+                Fits f = new Fits(Program.PathOfProgram + @"\StellarPopulationModels\MaStar_SSP_v0.2.fits");
+                double[] hdata = (double[])((Array[])f.GetHDU(2).Data.Kernel).GetValue(1);
+                Constants.MaStarSSP = hdata;
+            }
+            catch (Exception)
+            {
+                throw new Exception("MaStar SSP Data not found");
+            } 
+        }
 
     }
 }

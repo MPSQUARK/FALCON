@@ -76,5 +76,9 @@ namespace MachineLearningSpectralFittingCode
         readonly public static double a_B_c2 = 8.418013525010775e-36f;
         readonly public static double kB_evK = 8.617333262145179e-05f; // eV/K
 
+        // Models - MaStar Data
+        public static double[] MaStarSSP { get; set; }
+        
+
     }
 }
