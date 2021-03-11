@@ -67,16 +67,22 @@ namespace MachineLearningSpectralFittingCode
 
             //Parallel.For(0, 1, i =>
             //{
-                Spectra Spectrum = new Spectra(Data_path, config.Milky_Way_Reddening, config.HPF_Mode, config.N_Masked_Amstrongs);
-                Spectrum.InitialiseSpectraParameters(gpu, Data, config.Redshift, config.RA_DEC, config.Velocity_Dispersion, config.Instrument_Resolution);
-                Spectrum.Fit_models_to_data();
+            //Spectra Spectrum = new Spectra(Data_path, config.Milky_Way_Reddening, config.HPF_Mode, config.N_Masked_Amstrongs);
+            //Spectrum.InitialiseSpectraParameters(gpu, Data, config.Redshift, config.RA_DEC, config.Velocity_Dispersion, config.Instrument_Resolution);
+            //Spectrum.Fit_models_to_data();
             //    Spectrum = null;
             //}
             //);
 
-            //watch.Stop();
-            //var elapsedMs = watch.ElapsedMilliseconds;
-            //Console.WriteLine("Time Taken to reach setup " + (elapsedMs * 0.001f).ToString() + "s");
+                Spectral_Model spectral_Model = new Spectral_Model(Data_path, config.Milky_Way_Reddening, config.HPF_Mode, config.N_Masked_Amstrongs);
+                spectral_Model.InitialiseSpectraParameters(gpu, Data, config.Redshift, config.RA_DEC, config.Velocity_Dispersion, config.Instrument_Resolution);
+                spectral_Model.Fit_models_to_data();
+
+ 
+
+            watch.Stop();
+            var elapsedMs = watch.ElapsedMilliseconds;
+            Console.WriteLine("Time Taken to reach setup " + (elapsedMs * 0.001f).ToString() + "s");
 
 
             //Console.WriteLine(Spectrum.Redshift);

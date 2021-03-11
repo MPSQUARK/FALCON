@@ -167,6 +167,7 @@ namespace MachineLearningSpectralFittingCode
         public bool HPF_Mode { get; private set; } = true;
         // Set Dust Law - DEFAULT 0 : Calzetti, 1 : Allen, 2 : prevot
         public byte Dust_Law { get; private set; } = 0;
+        public bool Downgrade_models { get; private set; } = true;
 
         #endregion
 
