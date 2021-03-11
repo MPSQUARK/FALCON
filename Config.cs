@@ -1,12 +1,14 @@
-﻿using System;
-using ILGPU.Runtime;
+﻿using System; // System Stuff
 using System.Collections.Generic;
 using System.Text;
 
+using ILGPU;  // GPU MODULE 
+using ILGPU.Runtime; // GPU MODULE
+
 using System.Management; // Uninstall later when system analytics unnessessary
 using System.IO;// Uninstall later when system analytics unnessessary
-using ILGPU;
-using nom.tam.fits;
+
+using HDF5CSharp;
 
 namespace MachineLearningSpectralFittingCode
 {
@@ -15,12 +17,10 @@ namespace MachineLearningSpectralFittingCode
         // Constructor
         public Config()
         {
+            // Get Hardware Data
             GetHardware();
-            // If the Model is a MaStar model type
-            if (this.Model_Key % 2 == 0)
-            {
-                SetMaStarData();
-            }
+            // Get Model Data 
+            GetModelData();
         }
 
         // CONFIG OF HARDWARE   
@@ -174,18 +174,50 @@ namespace MachineLearningSpectralFittingCode
 
 
         // CONFIG PRE-INITIALISE DATA
-        public void SetMaStarData()
+        public void GetModelData()
         {
-            try
+            // run this function upon Config Application - Pre-Initialisation Phase
+
+            // Read in Hdf5 Data File/s
+            string fileName = Program.PathOfProgram + @"data.h5";
+            long id = Hdf5.OpenFile(fileName, true);
+
+            // Load Data For Ma-Star Models
+            if (Model_Key % 2 == 0)
             {
-                Fits f = new Fits(Program.PathOfProgram + @"\StellarPopulationModels\MaStar_SSP_v0.2.fits");
-                double[] hdata = (double[])((Array[])f.GetHDU(2).Data.Kernel).GetValue(1);
-                Constants.MaStarSSP = hdata;
+                try
+                {
+                    Constants.r_model = (double[])((Hdf5.ReadDatasetToArray<double>(id, "r_model")).result);
+                    
+                    Constants.t = (float[])((Hdf5.ReadDatasetToArray<float>(id, "t")).result);
+                    Constants.Z = (float[])((Hdf5.ReadDatasetToArray<float>(id, "Z")).result);
+                    Constants.s = (float[])((Hdf5.ReadDatasetToArray<float>(id, "s")).result);
+
+                    Constants.wavelength = (float[])((Hdf5.ReadDatasetToArray<float>(id, "wavelength")).result);
+
+                    float[,,,] fluxgrid;
+                    if (Model_Key == 0b00001_010) // MaStar-Th
+                    {
+                        fluxgrid = (float[,,,])((Hdf5.ReadDatasetToArray<float>(id, "fluxgrid_Th")).result);
+                    }
+                    else if (Model_Key == 0b00010_010) // MaStar-E
+                    {
+                        fluxgrid = (float[,,,])((Hdf5.ReadDatasetToArray<float>(id, "fluxgrid_E")).result);
+                    }
+                    else
+                    {
+                        throw new Exception("MaStar Model Flavour Error Please choose between MaStar-Th and MaStar-E");
+                    }
+
+                    Constants.fluxgrid = fluxgrid;
+                    
+                }
+                catch (Exception)
+                {
+                    throw new Exception("MaStar SSP Data not found");
+                }
             }
-            catch (Exception)
-            {
-                throw new Exception("MaStar SSP Data not found");
-            } 
+            
         }
 
     }

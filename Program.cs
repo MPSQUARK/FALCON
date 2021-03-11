@@ -4,7 +4,7 @@ using System;
 using System.IO;
 using System.Collections.Generic;
 using System.Threading.Tasks;
-
+using HDF5CSharp;
 
 namespace MachineLearningSpectralFittingCode
 {
@@ -28,34 +28,55 @@ namespace MachineLearningSpectralFittingCode
             cosmology.Initialise();
             //config.RecordSystemInfo();
 
-            
+
 
 
 
             // VARIABLE BLOCK
-            string Data_path = @"C:\Users\Marcelpaw\source\repos\MachineLearningSpectralFittingCode\Data\spec-0266-51602-0001.dat";
+            string Data_path = PathOfProgram + @"\Data\spec-0266-51602-0001.dat";
 
             // PROGRAM START
             Console.WriteLine("Start");
 
 
-            // READ IN DATA
+            
+            //var tree = Hdf5.ReadTreeFileStructure(fileName);
+
+            //float[] fluxgrid = new float[4563];
+            //for (int i = 0; i < 4563; i++)
+            //{
+            //    fluxgrid[i] = readobj[0, 0, 0, i];
+            //}
+
+            //Console.WriteLine(fluxgrid.ToString());
+
+
+            Console.WriteLine("reading hdf5");
+            //for (int i = 0; i < hdata.Length; i++)
+            //{
+            //    Console.WriteLine(hdata[i]);
+            //}
+
+
+
+            //// READ IN DATA
             Vector Data = new Vector(UtilityMethods.ReadData(Data_path), 3); // Data Is read in as a 2D Vector of 3 columns
 
 
-            // Made 1 Instance of a Spectrum
+            //// Made 1 Instance of a Spectrum
 
-            Parallel.For(0, 200, i =>
-            {
+            //Parallel.For(0, 1, i =>
+            //{
                 Spectra Spectrum = new Spectra(Data_path, config.Milky_Way_Reddening, config.HPF_Mode, config.N_Masked_Amstrongs);
                 Spectrum.InitialiseSpectraParameters(gpu, Data, config.Redshift, config.RA_DEC, config.Velocity_Dispersion, config.Instrument_Resolution);
-                Spectrum = null;
-            }
-            );
+                Spectrum.Fit_models_to_data();
+            //    Spectrum = null;
+            //}
+            //);
 
-            watch.Stop();
-            var elapsedMs = watch.ElapsedMilliseconds;
-            Console.WriteLine("Time Taken to reach setup " + (elapsedMs * 0.001f).ToString() + "s");
+            //watch.Stop();
+            //var elapsedMs = watch.ElapsedMilliseconds;
+            //Console.WriteLine("Time Taken to reach setup " + (elapsedMs * 0.001f).ToString() + "s");
 
 
             //Console.WriteLine(Spectrum.Redshift);

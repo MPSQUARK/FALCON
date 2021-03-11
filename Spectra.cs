@@ -34,7 +34,7 @@ namespace MachineLearningSpectralFittingCode
         public float Redshift { get; private set; }
         public float[] RA_DEC { get; private set; }
         public float Velocity_Dispersion { get; private set; }
-        public float Instrument_Resolution { get; private set; }
+        public Vector Instrument_Resolution { get; private set; }
 
         public float Distance_Luminosity { get; private set; }
         public Vector Bad_Flags { get; private set; }
@@ -97,9 +97,21 @@ namespace MachineLearningSpectralFittingCode
             this.Redshift = Redshift;
             this.RA_DEC = RA_DEC;
             this.Velocity_Dispersion = Velocity_Disp;
-            this.Instrument_Resolution = instrument_resolution;
             this.Trust_Flag = 1;
             this.ObjID = 0;
+            
+            retryInstru:
+            try
+            {
+                this.Instrument_Resolution = Vector.Fill(gpu, instrument_resolution, this.Wavelength.Value.Length);
+            }
+            catch (Exception)
+            {
+                warn = true;
+                Task.Delay(100);
+                goto retryInstru;
+            }
+
 
             if (this.Milky_Way_Reddening)
             {
@@ -264,6 +276,12 @@ namespace MachineLearningSpectralFittingCode
 
 
             return 0f;
+        }
+
+
+        public void Fit_models_to_data()
+        {
+            this.fit_models_to_data_Calc(this.Velocity_Dispersion, this.Restframe_Wavelength, this.Instrument_Resolution, this.ebv_MW);
         }
 
     }

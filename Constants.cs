@@ -76,9 +76,14 @@ namespace MachineLearningSpectralFittingCode
         readonly public static double a_B_c2 = 8.418013525010775e-36f;
         readonly public static double kB_evK = 8.617333262145179e-05f; // eV/K
 
-        // Models - MaStar Data
-        public static double[] MaStarSSP { get; set; }
-        
+        // Models - DATA
+        // MaStar
+        public static double[] r_model { get; set; }
+        public static float[] t { get; set; }
+        public static float[] Z { get; set; }
+        public static float[] s { get; set; }
+        public static float[] wavelength { get; set; }
+        public static float[,,,] fluxgrid { get; set; } // Line 326-329 - firefly models
 
     }
 }
