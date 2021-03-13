@@ -12,7 +12,7 @@ namespace MachineLearningSpectralFittingCode
     class Spectral_Model
     {
         public Spectral_Model(string path,
-                       bool milky_Way_Reddening = true,
+                       bool milky_Way_Reddening = false, // SHOULD BE TRUE
                        bool hPF_Mode = true,
                        ushort n_Masked_Amstrongs = 20)
         {
@@ -57,6 +57,11 @@ namespace MachineLearningSpectralFittingCode
         int fit_per_iteration_cap { get; set; }
         List<double> delta_lamdba_lib { get; set; }
         double deltal { get; set; }
+        // Model Main Values
+        float[] Model_wavelength;
+        float[][] Model_flux;
+        float[] Model_ages;
+        float[] Model_metals;
 
 
         #endregion
@@ -404,14 +409,14 @@ namespace MachineLearningSpectralFittingCode
                 var sidx = Array.IndexOf(Constants.s, slope);
                 // This section - END
 
-                List<float> model_flux = new List<float>();
+                List<float[]> model_flux = new List<float[]>();
                 List<float> age_model = new List<float>();
                 List<float> metal_model = new List<float>();
 
                 for (int i = 0; i < Constants.t.Length; i++)
                 {
                     //index i in t , t value
-                    if (Constants.t[i] < Program.config.MinMax_Model_Age[0] || Constants.t[i] > Program.config.MinMax_Model_Age[1])
+                    if ((Constants.t[i] < Program.config.MinMax_Model_Age[0]) || (Constants.t[i] > Program.config.MinMax_Model_Age[1]))
                     {
                         continue;
                     }
@@ -434,8 +439,10 @@ namespace MachineLearningSpectralFittingCode
                             flux[k] = Constants.fluxgrid[i, j, sidx, k];
                         }
 
-                        // no conversion to vacuum needed, assuming models are in vacuum
                         
+                        // no conversion to vacuum needed, assuming models are in vacuum
+
+                        goto skipDownGrade;
                         // downgrades the model
                         if (Program.config.Downgrade_models)
                         {
@@ -445,6 +452,7 @@ namespace MachineLearningSpectralFittingCode
                         {
                             // flux = flux
                         }
+                        skipDownGrade:
 
                         // Reddens the models
                         if (this.ebv_MW != 0)
@@ -453,7 +461,7 @@ namespace MachineLearningSpectralFittingCode
 
                             try
                             {
-                                model_flux.AddRange(Vector.ConsecutiveProduct(Program.gpu, (new Vector(flux)), (new Vector(attenuations))).Value);
+                                model_flux.Add(Vector.ConsecutiveProduct(Program.gpu, (new Vector(flux)), (new Vector(attenuations))).Value);
 
                             }
                             catch (Exception)
@@ -464,24 +472,31 @@ namespace MachineLearningSpectralFittingCode
                         }
                         else
                         {
-                            model_flux.AddRange(flux);
+                            model_flux.Add(flux);
                         }
+                        
+
 
                         age_model.Add(i);
                         metal_model.Add(MathF.Pow(10f, j));
 
-                        
-                    }
+                        flux = null;
 
+                    }
                 }
+
+                this.Model_wavelength = Constants.wavelength;  // Lacking 1dp precision
+                this.Model_flux = model_flux.ToArray();      
+                this.Model_ages = age_model.ToArray();
+                this.Model_metals = metal_model.ToArray();
 
             }
             /*
              * sets the
-             * model_wave_int
-             * model_flux_int
-             * age
-             * metal
+             * model_wave_int == Model_wavelength
+             * model_flux_int == Model_flux
+             * age            == Model_ages 
+             * metal          == Model_metals
              */
 
         }

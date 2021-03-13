@@ -74,11 +74,16 @@ namespace MachineLearningSpectralFittingCode
             //}
             //);
 
-                Spectral_Model spectral_Model = new Spectral_Model(Data_path, config.Milky_Way_Reddening, config.HPF_Mode, config.N_Masked_Amstrongs);
-                spectral_Model.InitialiseSpectraParameters(gpu, Data, config.Redshift, config.RA_DEC, config.Velocity_Dispersion, config.Instrument_Resolution);
-                spectral_Model.Fit_models_to_data();
+            Spectral_Model spectral_Model = new Spectral_Model(Data_path, config.Milky_Way_Reddening, config.HPF_Mode, config.N_Masked_Amstrongs);
+            spectral_Model.InitialiseSpectraParameters(gpu, Data, config.Redshift, config.RA_DEC, config.Velocity_Dispersion, config.Instrument_Resolution);
+            spectral_Model.Fit_models_to_data();
 
- 
+            //var slice = Vector.AccessSlice(gpu, Data, 0, 'c');
+            //for (int i = 0; i < slice.Value.Length; i++)
+            //{
+            //    Console.WriteLine(slice.Value[i]);
+            //}
+
 
             watch.Stop();
             var elapsedMs = watch.ElapsedMilliseconds;
