@@ -340,3 +340,4 @@ ASALocalRun/
 healthchecksdb
 /StellarPopulationModels/MaStar_SSP_v0.2.fits
 /Flux.txt
+/modeldata.h5

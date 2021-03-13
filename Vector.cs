@@ -28,6 +28,7 @@ namespace MachineLearningSpectralFittingCode
         public float[] Value { get; set; } // Determines the values in the Vector
         public int Columns { get; set; } // Defines the number of Columns in a Vector STARTS AT 1
 
+
         // Creates a Uniform Vector where all values are = Value
         public static Vector Fill(Accelerator gpu, float Value, int Size, int Columns = 1)
         {
@@ -248,6 +249,15 @@ namespace MachineLearningSpectralFittingCode
 
 
         // COMPOUND SCALAR OPERATIONS : Vector * Scalar1 +|- Scaler2, Vector / Scalar1 +|- Scalar2
+        /// <summary>
+        /// 
+        /// </summary>
+        /// <param name="gpu"></param>
+        /// <param name="vector"></param>
+        /// <param name="Multiple"></param>
+        /// <param name="Adder"></param>
+        /// <param name="operation"></param>
+        /// <returns></returns>
         public static Vector ScalarCompoundOperation(Accelerator gpu, Vector vector, float Multiple, float Adder, string operation = "*+")
         {
 
@@ -269,6 +279,12 @@ namespace MachineLearningSpectralFittingCode
                     break;
                 case "/+":
                     kernelWithStream = gpu.LoadAutoGroupedKernel<Index1, ArrayView<float>, ArrayView<float>, float, float>(ScalarDivideSumKernal);
+                    break;
+                case "+*":
+                    kernelWithStream = gpu.LoadAutoGroupedKernel<Index1, ArrayView<float>, ArrayView<float>, float, float>(ScalarSumProductKernal);
+                    break;
+                case "+/":
+                    kernelWithStream = gpu.LoadAutoGroupedKernel<Index1, ArrayView<float>, ArrayView<float>, float, float>(ScalarSumDivideKernal);
                     break;
             }
 
@@ -294,8 +310,14 @@ namespace MachineLearningSpectralFittingCode
         {
             OutPut[index] = Input[index] / Divisor + Adder;
         }
-
-
+        static void ScalarSumProductKernal(Index1 index, ArrayView<float> OutPut, ArrayView<float> Input, float Multiplicator, float Adder)
+        {
+            OutPut[index] = (Input[index] + Adder) * Multiplicator;
+        }
+        static void ScalarSumDivideKernal(Index1 index, ArrayView<float> OutPut, ArrayView<float> Input, float Divisor, float Adder)
+        {
+            OutPut[index] = (Input[index] + Adder) / Divisor ;
+        }
 
         // Multiplies 2 Vectors Element by Element
         public static Vector ConsecutiveProduct(Accelerator gpu, Vector vectorA, Vector vectorB)
@@ -361,7 +383,19 @@ namespace MachineLearningSpectralFittingCode
             }
         }
 
-
+        // NORMALISE VECTOR
+        /// <summary>
+        /// Normalises an input Vector Class between 0 and 1
+        /// </summary>
+        /// <param name="gpu"></param>
+        /// <param name="vector"></param>
+        /// <returns></returns>
+        public static Vector Normalise(Accelerator gpu, Vector vector)
+        {
+            float Min = vector.Value.Min();
+            float Max = vector.Value.Max();
+            return Vector.ScalarCompoundOperation(gpu, vector, (1 / (Max - Min)), -Min, "+*");
+        }
 
 
 

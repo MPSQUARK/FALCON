@@ -58,10 +58,10 @@ namespace MachineLearningSpectralFittingCode
         List<double> delta_lamdba_lib { get; set; }
         double deltal { get; set; }
         // Model Main Values
-        float[] Model_wavelength;
-        float[][] Model_flux;
-        float[] Model_ages;
-        float[] Model_metals;
+        public float[] Model_wavelength;
+        public float[][] Model_flux;
+        public float[] Model_ages;
+        public float[] Model_metals;
 
 
         #endregion
@@ -489,6 +489,7 @@ namespace MachineLearningSpectralFittingCode
                 this.Model_flux = model_flux.ToArray();      
                 this.Model_ages = age_model.ToArray();
                 this.Model_metals = metal_model.ToArray();
+
 
             }
             /*
