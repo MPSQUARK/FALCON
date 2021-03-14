@@ -79,15 +79,32 @@ namespace MachineLearningSpectralFittingCode
             spectral_Model.InitialiseSpectraParameters(gpu, Data, config.Redshift, config.RA_DEC, config.Velocity_Dispersion, config.Instrument_Resolution);
             spectral_Model.Fit_models_to_data();
 
-            string fileName = Program.PathOfProgram + @"modeldata.h5";
-            long fileId = Hdf5.CreateFile(fileName);
-            Hdf5.WriteDatasetFromArray<float>(fileId, "model_wavelength", spectral_Model.Model_wavelength);
-            Hdf5.WriteDatasetFromArray<int>(fileId, "model_flux_shape", new int[2] { spectral_Model.Model_flux.Length, spectral_Model.Model_flux[0].Length });
-            Hdf5.WriteDatasetFromArray<float>(fileId, "model_flux", spectral_Model.Model_flux.SelectMany(a => a).ToArray());
-            Hdf5.WriteDatasetFromArray<float>(fileId, "model_ages", spectral_Model.Model_ages);
-            Hdf5.WriteDatasetFromArray<float>(fileId, "model_metals", spectral_Model.Model_metals);
+            Console.WriteLine();
 
-            
+
+            //var chi = spectral_Model.CalculateChiSqu(0);
+            //Console.WriteLine($"The Chi Squared Of Model : {0} , is {chi}");
+
+            float chi = 0f;
+            chi = spectral_Model.CalculateChiSqu(0);
+            Console.WriteLine(chi);
+            chi = spectral_Model.CalculateChiSqu(150);
+            Console.WriteLine(chi);
+            //chi = spectral_Model.CalculateChiSqu(10);
+            //chi = spectral_Model.CalculateChiSqu(20);
+            //chi = spectral_Model.CalculateChiSqu(50);
+            //chi = spectral_Model.CalculateChiSqu(100);
+
+            // WRITES MODEL DATA TO HDF5 FORMAT FOR PLOTTING
+            //string fileName = Program.PathOfProgram + @"modeldata.h5";
+            //long fileId = Hdf5.CreateFile(fileName);
+            //Hdf5.WriteDatasetFromArray<float>(fileId, "model_wavelength", spectral_Model.Model_wavelength);
+            //Hdf5.WriteDatasetFromArray<int>(fileId, "model_flux_shape", new int[2] { spectral_Model.Model_flux.Length, spectral_Model.Model_flux[0].Length });
+            //Hdf5.WriteDatasetFromArray<float>(fileId, "model_flux", spectral_Model.Model_flux.SelectMany(a => a).ToArray());
+            //Hdf5.WriteDatasetFromArray<float>(fileId, "model_ages", spectral_Model.Model_ages);
+            //Hdf5.WriteDatasetFromArray<float>(fileId, "model_metals", spectral_Model.Model_metals);
+
+
             //var slice = Vector.AccessSlice(gpu, Data, 0, 'c');
             //for (int i = 0; i < slice.Value.Length; i++)
             //{

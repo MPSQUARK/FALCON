@@ -10,11 +10,12 @@ namespace MachineLearningSpectralFittingCode
     /* LOG :
      *      - Access Slice                          : WORKING
      *      - Access Value                          : WORKING
-     *      - Consecutive Product                   : WORKING
+     *      - Consecutive Operation                 : WORKING
      *      - Dot Product                           : WORKING
      *      - Fill                                  : WORKING
      *      - Scalar Compound Operation             : WORKING
      *      - Scalar Operation                      : WORKING
+     *      - Normalise                             : NOT TESTED
     */
 
     public class Vector
@@ -320,7 +321,7 @@ namespace MachineLearningSpectralFittingCode
         }
 
         // Multiplies 2 Vectors Element by Element
-        public static Vector ConsecutiveProduct(Accelerator gpu, Vector vectorA, Vector vectorB)
+        public static Vector ConsecutiveOperation(Accelerator gpu, Vector vectorA, Vector vectorB, char operation = '*')
         {
             if (vectorA.Value.Length != vectorB.Value.Length)
             {
@@ -341,6 +342,22 @@ namespace MachineLearningSpectralFittingCode
 
             buffer.CopyFrom(vectorA.Value, 0, 0, vectorA.Value.Length);
             buffer2.CopyFrom(vectorB.Value, 0, 0, vectorB.Value.Length);
+
+            switch (operation)
+            {
+                case '*':
+                    kernelWithStream = gpu.LoadAutoGroupedKernel<Index1, ArrayView<float>, ArrayView<float>, ArrayView<float>>(ConsecutiveProductKernal);
+                    break;
+                case '+':
+                    kernelWithStream = gpu.LoadAutoGroupedKernel<Index1, ArrayView<float>, ArrayView<float>, ArrayView<float>>(ConsecutiveAdditionKernal);
+                    break;
+                case '-':
+                    kernelWithStream = gpu.LoadAutoGroupedKernel<Index1, ArrayView<float>, ArrayView<float>, ArrayView<float>>(ConsecutiveSubtractKernal);
+                    break;
+                case '/':
+                    kernelWithStream = gpu.LoadAutoGroupedKernel<Index1, ArrayView<float>, ArrayView<float>, ArrayView<float>>(ConsecutiveDivisionKernal);
+                    break;
+            }
 
             kernelWithStream(Stream, buffer.Length, buffer.View, buffer2.View, buffer3.View);
 
@@ -363,15 +380,43 @@ namespace MachineLearningSpectralFittingCode
             OutPut[index] = InputA[index] * InputB[index];
 
         }
+        static void ConsecutiveAdditionKernal(Index1 index, ArrayView<float> InputA, ArrayView<float> InputB, ArrayView<float> OutPut)
+        {
 
+            OutPut[index] = InputA[index] + InputB[index];
+
+        }
+        static void ConsecutiveSubtractKernal(Index1 index, ArrayView<float> InputA, ArrayView<float> InputB, ArrayView<float> OutPut)
+        {
+
+            OutPut[index] = InputA[index] - InputB[index];
+
+        }
+        static void ConsecutiveDivisionKernal(Index1 index, ArrayView<float> InputA, ArrayView<float> InputB, ArrayView<float> OutPut)
+        {
+
+            OutPut[index] = InputA[index] / InputB[index];
+
+        }
+
+        // NEED TO ADD VECTOR CONSECUTIVE COMPOUND OPERATION FUNCTIONALITY
 
 
         // DOT PRODUCT : Vector dot Scalar, Vector dot Vector
+        /// <summary>
+        /// Calculates the Dot product between either
+        /// | 1) Vector and Vector | 
+        /// | 2) Vector and Scalar | 
+        /// </summary>
+        /// <param name="gpu"></param>
+        /// <param name="vectorA"></param>
+        /// <param name="param"></param>
+        /// <returns>float</returns>
         public static float DotProduct(Accelerator gpu, Vector vectorA, object param )
         {
             if (param.GetType() == typeof(Vector))
             {
-                return ConsecutiveProduct(gpu, vectorA, (Vector)param).Value.Sum();
+                return ConsecutiveOperation(gpu, vectorA, (Vector)param, '*').Value.Sum();
             }
             else if (param.GetType() == typeof(float))
             {
@@ -390,13 +435,40 @@ namespace MachineLearningSpectralFittingCode
         /// <param name="gpu"></param>
         /// <param name="vector"></param>
         /// <returns></returns>
-        public static Vector Normalise(Accelerator gpu, Vector vector)
+        public static Vector Normalise(Accelerator gpu, Vector vector, float Offset)
         {
             float Min = vector.Value.Min();
             float Max = vector.Value.Max();
-            return Vector.ScalarCompoundOperation(gpu, vector, (1 / (Max - Min)), -Min, "+*");
-        }
 
+            AcceleratorStream Stream = gpu.CreateStream();
+
+            var kernelWithStream = gpu.LoadAutoGroupedKernel<Index1, ArrayView<float>, ArrayView<float>, float, float, float>(NormaliseKernel);
+
+            var buffer = gpu.Allocate<float>(vector.Value.Length);
+            var buffer2 = gpu.Allocate<float>(vector.Value.Length);
+            buffer.MemSetToZero();
+            buffer2.MemSetToZero();
+
+            buffer2.CopyFrom(vector.Value, 0, 0, vector.Value.Length);
+
+            kernelWithStream(Stream, buffer.Length, buffer.View, buffer2.View, Min, Max, Offset);
+
+            Stream.Synchronize();
+
+            float[] Output = buffer.GetAsArray();
+
+            buffer.Dispose();
+            buffer2.Dispose();
+
+            Stream.Dispose();
+
+            return new Vector(Output);
+        }
+        // KERNEL
+        public static void NormaliseKernel(Index1 index, ArrayView<float> Output, ArrayView<float> Input, float Min, float Max, float Offset)
+        {
+            Output[index] = ((Input[index] - Min) / (Max - Min)) + Offset;
+        }
 
 
     }
