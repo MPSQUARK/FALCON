@@ -435,7 +435,7 @@ namespace MachineLearningSpectralFittingCode
         /// <param name="gpu"></param>
         /// <param name="vector"></param>
         /// <returns></returns>
-        public static Vector Normalise(Accelerator gpu, Vector vector, float Offset)
+        public static Vector Normalise(Accelerator gpu, Vector vector, float Offset = 0f)
         {
             float Min = vector.Value.Min();
             float Max = vector.Value.Max();

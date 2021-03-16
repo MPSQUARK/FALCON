@@ -374,7 +374,7 @@ namespace MachineLearningSpectralFittingCode
             // this.raw_model_wave_int = model_wave_int
             // this.raw_model_flux_int ... this.metal = metal
             Match_data_models();
-            normalise_spec();
+            //NormaliseSpec();
 
             // Part 3 - correction from dust attenuation
             // -- LOG TIME COMPARISON -- CHECKPOINT
@@ -525,6 +525,11 @@ namespace MachineLearningSpectralFittingCode
 
         private void Match_data_models()
         {
+            // Get model_flux and Data_flux
+
+
+
+
             /*
              * sets the
              * wave
@@ -536,8 +541,24 @@ namespace MachineLearningSpectralFittingCode
              */
         }
 
-        private void normalise_spec()
+
+        private void NormaliseSpec()
         {
+            float data_norm = UtilityMethods.Median(this.Flux.Value);
+            int num_mods = this.Model_flux.Length;
+            float[] model_norm = new float[num_mods]; 
+            float[] mass_factor = model_norm;
+            float[] normed_model_flux = new float[num_mods * this.Model_flux[0].Length];
+
+            for (int i = 0; i < this.Model_flux[0].Length; i++)
+            {
+                model_norm[i] = UtilityMethods.Median(this.Model_flux[i]);
+                mass_factor[i] = data_norm / model_norm[i];
+            }
+
+            // Send these to the GPU
+            //normed_model_flux.Value[i] = this.Model_flux[i] / model_norm.Value[i] * data_norm;
+
             /*
              * sets the 
              * model_flux
@@ -571,51 +592,30 @@ namespace MachineLearningSpectralFittingCode
 
             // Finds the closest start value
             float Closest_Start_Val = this.Model_wavelength.OrderBy(n => Math.Abs(this.Restframe_Wavelength.Value[0] - n)).First();
-            //Console.WriteLine("Closest Model Wavelength to Data is " + Closest_Start_Val.ToString());
 
             // Gets Index of Closest Value
             int idx_closest = Array.IndexOf(this.Model_wavelength, Closest_Start_Val);
-            Closest_Start_Val = 0f;
 
-            // Get matching wavelengths and corresponding fluxes of the model
+            // Get wavelength
             //float[] selected_Model_wl = this.Model_wavelength.Skip(idx_closest).Take(length).ToArray();
-            //float[] selected_Model_fluxes = this.Model_flux[model].Skip(idx_closest).Take(length).ToArray();
 
             // Normalise the Fluxes and shift everything into the range 0.1 - 1.1
-            Vector model_flux_norm = Vector.Normalise(Program.gpu, new Vector(this.Model_flux[model].Skip(idx_closest).Take(length).ToArray()), 0.1f);
+            Vector model_flux_norm = Vector.Normalise(Program.gpu, new Vector(this.Model_flux[model][idx_closest..(idx_closest+length)]), 0.1f);
 
             Vector data_flux_norm = Vector.Normalise(Program.gpu, this.Flux, 0.1f);
             Vector data_error_norm = Vector.Normalise(Program.gpu, this.Error, 0.1f);
 
-
-
             float sum = 0f;
             for (int j = 0; j < model_flux_norm.Value.Length; j++)
             {
-                sum += MathF.Pow(((model_flux_norm.Value[j] - this.Flux.Value[j]) / this.Error.Value[j]), 2f);
+                sum += MathF.Pow(((model_flux_norm.Value[j] - data_flux_norm.Value[j]) / data_error_norm.Value[j]), 2f);
             }
-
-            //float sum = 0f;
-            //Console.WriteLine("closest index is " + idx_closest.ToString() + " for a length of " + length.ToString() );
-
-            //Vector diff =  Vector.ConsecutiveOperation(Program.gpu, data_error_norm, model_flux_norm, '-');
-            //Vector div = Vector.ConsecutiveOperation(Program.gpu, diff, data_error_norm, '/');
-
-
-
-            //for (int i = 0; i < data_flux_norm.Value.Length-1; i++)
-            //{
-                //sum += MathF.Pow(( (data_flux_norm.Value[i] - model_flux_norm.Value[i]) / data_error_norm.Value[i]), 2f);
-                //Console.WriteLine(model_flux_norm.Value[i]);
-            //}
-
-
             //Console.WriteLine($"Length of Data : {length} , starting @ {this.Restframe_Wavelength.Value[0]} and ending @ {this.Restframe_Wavelength.Value[length]}");
             //Console.WriteLine($"Length of Model : {selected_Model_wl.Length} , starting @ {selected_Model_wl[0]} and ending @ {selected_Model_wl[selected_Model_wl.Length - 1]}");
 
-            // Why 8?
             return sum;
         }
+
 
 
 

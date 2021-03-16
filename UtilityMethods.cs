@@ -35,7 +35,16 @@ namespace MachineLearningSpectralFittingCode
             return 3.08567758128e+24f * Mpc;
         }
 
+        public static float Median(float[] array)
+        {
+            if (array.Length % 2 == 0)
+            {
+                float[] arr = array.OrderBy(x => x).ToArray();
+                return (arr[(int)(array.Length * 0.5f - 1)] + arr[(int)(array.Length * 0.5f)]) * 0.5f;
+            }
 
+            return array.OrderBy(x => x).ToArray()[(int)(array.Length * 0.5f)];
+        }
 
 
     }

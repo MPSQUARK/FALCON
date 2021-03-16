@@ -20,7 +20,7 @@ namespace MachineLearningSpectralFittingCode
 
         static void Main()
         {
-            var watch = System.Diagnostics.Stopwatch.StartNew();
+            //var watch = System.Diagnostics.Stopwatch.StartNew();
 
             // PRE-INITIALISATION
             File.WriteAllText($"{PathOfProgram}Log.txt", $"{System.DateTime.Now} : Starting Pre-Initialisation\n");
@@ -85,11 +85,14 @@ namespace MachineLearningSpectralFittingCode
             //var chi = spectral_Model.CalculateChiSqu(0);
             //Console.WriteLine($"The Chi Squared Of Model : {0} , is {chi}");
 
-            float chi = 0f;
-            chi = spectral_Model.CalculateChiSqu(0);
-            Console.WriteLine(chi);
-            chi = spectral_Model.CalculateChiSqu(150);
-            Console.WriteLine(chi);
+            //float chi = 0f;
+            //chi = spectral_Model.CalculateChiSqu(0);
+            //Console.WriteLine(chi);
+            //chi = spectral_Model.CalculateChiSqu(150);
+            //Console.WriteLine(chi);
+
+
+
             //chi = spectral_Model.CalculateChiSqu(10);
             //chi = spectral_Model.CalculateChiSqu(20);
             //chi = spectral_Model.CalculateChiSqu(50);
@@ -112,9 +115,9 @@ namespace MachineLearningSpectralFittingCode
             //}
 
 
-            watch.Stop();
-            var elapsedMs = watch.ElapsedMilliseconds;
-            Console.WriteLine("Time Taken to reach setup " + (elapsedMs * 0.001f).ToString() + "s");
+            //watch.Stop();
+            //var elapsedMs = watch.ElapsedMilliseconds;
+            //Console.WriteLine("Time Taken to reach setup " + (elapsedMs * 0.001f).ToString() + "s");
 
 
             //Console.WriteLine(Spectrum.Redshift);
