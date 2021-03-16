@@ -1,4 +1,5 @@
 ﻿using ILGPU;
+using ILGPU.Algorithms;
 using ILGPU.Runtime;
 using System;
 using System.Linq;
@@ -11,11 +12,14 @@ namespace MachineLearningSpectralFittingCode
      *      - Access Slice                          : WORKING
      *      - Access Value                          : WORKING
      *      - Consecutive Operation                 : WORKING
+     *      - Consecutive Operation 2D              : NOT TESTED
+     *      - Consecutive Compound Operation 2D     : NOT TESTED
      *      - Dot Product                           : WORKING
      *      - Fill                                  : WORKING
-     *      - Scalar Compound Operation             : WORKING
      *      - Scalar Operation                      : WORKING
+     *      - Scalar Compound Operation             : WORKING
      *      - Normalise                             : NOT TESTED
+     *      
     */
 
     public class Vector
@@ -399,7 +403,130 @@ namespace MachineLearningSpectralFittingCode
 
         }
 
-        // NEED TO ADD VECTOR CONSECUTIVE COMPOUND OPERATION FUNCTIONALITY
+        // Multiplies 2 Vectors Element by Element, where Vector A is 2D and Vector B is 1D
+        public static Vector ConsecutiveOperation2D(Accelerator gpu, Vector vectorA, Vector vectorB, char operation = '*')
+        {
+            if (vectorA.Columns == 1)
+            {
+                throw new Exception("vectorA should be a 2D flattened vector of columns > 1");
+            }
+            if (vectorB.Columns > 1)
+            {
+                throw new Exception("vectorB should be a 1D vector of columns = 1");
+            }
+            if (vectorA.Columns != vectorB.Value.Length)
+            {
+                throw new Exception($"Length of VectorB : {vectorB.Value.Length} does NOT match number of columns in VectorA : {vectorA.Columns}");
+            }
+
+            AcceleratorStream Stream = gpu.CreateStream();
+            
+            var kernelWithStream = gpu.LoadAutoGroupedKernel<Index1, ArrayView<float>, ArrayView<float>, ArrayView<float>, float>(ConsecutiveProduct2DKernel);
+            
+            var buffer = gpu.Allocate<float>(vectorA.Value.Length); // Output
+            var buffer2 = gpu.Allocate<float>(vectorA.Value.Length); // Input
+            var buffer3 = gpu.Allocate<float>(vectorA.Value.Length); // Input
+
+            buffer2.CopyFrom(vectorA.Value, 0, 0, vectorA.Value.Length);
+            buffer3.CopyFrom(vectorB.Value, 0, 0, vectorB.Value.Length);
+
+            switch (operation)
+            {
+                case '*':
+                    kernelWithStream = gpu.LoadAutoGroupedKernel<Index1, ArrayView<float>, ArrayView<float>, ArrayView<float>, float>(ConsecutiveProduct2DKernel);
+                    break;
+                case '+':
+                    kernelWithStream = gpu.LoadAutoGroupedKernel<Index1, ArrayView<float>, ArrayView<float>, ArrayView<float>, float>(ConsecutiveSum2DKernel);
+                    break;
+                case '-':
+                    kernelWithStream = gpu.LoadAutoGroupedKernel<Index1, ArrayView<float>, ArrayView<float>, ArrayView<float>, float>(ConsecutiveSubtract2DKernel);
+                    break;
+                case '/':
+                    kernelWithStream = gpu.LoadAutoGroupedKernel<Index1, ArrayView<float>, ArrayView<float>, ArrayView<float>, float>(ConsecutiveDivide2DKernel);
+                    break;
+            }
+
+            kernelWithStream(Stream, buffer.Length, buffer.View, buffer2.View, buffer3.View, vectorA.Columns);
+
+            Stream.Synchronize();
+
+            float[] Output = buffer.GetAsArray();
+
+            buffer.Dispose();
+            buffer2.Dispose();
+            buffer3.Dispose();
+
+            Stream.Dispose();
+
+            return new Vector(Output, vectorA.Columns);
+        }
+        // KERNEL
+        static void ConsecutiveProduct2DKernel(Index1 index, ArrayView<float> Output, ArrayView<float> InputA, ArrayView<float> InputB, float Cols)
+        {
+            Output[index] = InputA[index] * InputB[(int)XMath.RoundAwayFromZero(index % Cols)]; 
+        }
+        static void ConsecutiveSum2DKernel(Index1 index, ArrayView<float> Output, ArrayView<float> InputA, ArrayView<float> InputB, float Cols)
+        {
+            Output[index] = InputA[index] + InputB[(int)XMath.RoundAwayFromZero(index % Cols)];
+        }
+        static void ConsecutiveSubtract2DKernel(Index1 index, ArrayView<float> Output, ArrayView<float> InputA, ArrayView<float> InputB, float Cols)
+        {
+            Output[index] = InputA[index] - InputB[(int)XMath.RoundAwayFromZero(index % Cols)];
+        }
+        static void ConsecutiveDivide2DKernel(Index1 index, ArrayView<float> Output, ArrayView<float> InputA, ArrayView<float> InputB, float Cols)
+        {
+            Output[index] = InputA[index] / InputB[(int)XMath.RoundAwayFromZero(index % Cols)];
+        }
+
+        // Multiplies 2 Vectors Element by Element, where Vector A is 2D and Vector B is 1D
+        public static Vector ConsecutiveCompoundOperation2D(Accelerator gpu, Vector vectorA, Vector vectorB, float scalar, string operation = "**")
+        {
+            if (vectorA.Columns == 1)
+            {
+                throw new Exception("vectorA should be a 2D flattened vector of columns > 1");
+            }
+            if (vectorB.Columns > 1)
+            {
+                throw new Exception("vectorB should be a 1D vector of columns = 1");
+            }
+            if (vectorA.Columns != vectorB.Value.Length)
+            {
+                throw new Exception($"Length of VectorB : {vectorB.Value.Length} does NOT match number of columns in VectorA : {vectorA.Columns}");
+            }
+
+            AcceleratorStream Stream = gpu.CreateStream();
+
+            var kernelWithStream = gpu.LoadAutoGroupedKernel<Index1, ArrayView<float>, ArrayView<float>, ArrayView<float>, float, float>(ConsecutiveC_VPSP_2DKernel);
+
+            var buffer = gpu.Allocate<float>(vectorA.Value.Length); // Output
+            var buffer2 = gpu.Allocate<float>(vectorA.Value.Length); // Input
+            var buffer3 = gpu.Allocate<float>(vectorA.Value.Length); // Input
+
+            buffer2.CopyFrom(vectorA.Value, 0, 0, vectorA.Value.Length);
+            buffer3.CopyFrom(vectorB.Value, 0, 0, vectorB.Value.Length);
+
+
+            kernelWithStream(Stream, buffer.Length, buffer.View, buffer2.View, buffer3.View, vectorA.Columns, scalar);
+
+            Stream.Synchronize();
+
+            float[] Output = buffer.GetAsArray();
+
+            buffer.Dispose();
+            buffer2.Dispose();
+            buffer3.Dispose();
+
+            Stream.Dispose();
+
+            return new Vector(Output, vectorA.Columns);
+        }
+        // KERNEL
+        static void ConsecutiveC_VPSP_2DKernel(Index1 index, ArrayView<float> Output, ArrayView<float> InputA, ArrayView<float> InputB, float Cols, float Scalar)
+        {
+            Output[index] = InputA[index] * InputB[(int)XMath.RoundAwayFromZero(index % Cols)] * Scalar;
+        }
+
+
 
 
         // DOT PRODUCT : Vector dot Scalar, Vector dot Vector

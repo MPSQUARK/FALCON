@@ -75,11 +75,29 @@ namespace MachineLearningSpectralFittingCode
             //}
             //);
 
-            Spectral_Model spectral_Model = new Spectral_Model(Data_path, config.Milky_Way_Reddening, config.HPF_Mode, config.N_Masked_Amstrongs);
-            spectral_Model.InitialiseSpectraParameters(gpu, Data, config.Redshift, config.RA_DEC, config.Velocity_Dispersion, config.Instrument_Resolution);
-            spectral_Model.Fit_models_to_data();
+            //Spectral_Model spectral_Model = new Spectral_Model(Data_path, config.Milky_Way_Reddening, config.HPF_Mode, config.N_Masked_Amstrongs);
+            //spectral_Model.InitialiseSpectraParameters(gpu, Data, config.Redshift, config.RA_DEC, config.Velocity_Dispersion, config.Instrument_Resolution);
+            //spectral_Model.Fit_models_to_data();
 
             Console.WriteLine();
+
+            Vector testvec = new Vector(new float[20] { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20 }, 5);
+            Vector testvec2 = new Vector(new float[5] { 5, 10, 15, 20, 25 }, 1);
+            Vector ans = Vector.ConsecutiveOperation2D(gpu, testvec, testvec2, '*');
+
+            //for (int j = 0; j < ans.Value.Length / ans.Columns; j++)
+            //{
+            //    for (int i = 0; i < ans.Columns; i++)
+            //    {
+            //        Console.Write($" {ans.Value[i + j * ans.Columns]} |");
+            //    }
+            //    Console.WriteLine();
+            //}
+
+            for (int i = 0; i < ans.Value.Length; i++)
+            {
+                Console.WriteLine(ans.Value[i]);
+            }
 
 
             //var chi = spectral_Model.CalculateChiSqu(0);
