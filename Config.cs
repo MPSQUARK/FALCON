@@ -188,6 +188,7 @@ namespace MachineLearningSpectralFittingCode
             {
                 try
                 {
+                    // READ IN DATA
                     Constants.r_model = (double[])((Hdf5.ReadDatasetToArray<double>(id, "r_model")).result);
                     
                     Constants.t = (float[])((Hdf5.ReadDatasetToArray<float>(id, "t")).result);
@@ -196,6 +197,7 @@ namespace MachineLearningSpectralFittingCode
 
                     Constants.wavelength = (float[])((Hdf5.ReadDatasetToArray<float>(id, "wavelength")).result);
 
+                    // READ IN FLUXGRID
                     float[,,,] fluxgrid;
                     if (Model_Key == 0b00001_010) // MaStar-Th
                     {
@@ -209,9 +211,26 @@ namespace MachineLearningSpectralFittingCode
                     {
                         throw new Exception("MaStar Model Flavour Error Please choose between MaStar-Th and MaStar-E");
                     }
-
-                    Constants.fluxgrid = fluxgrid;
                     
+                    // SET FLUXGRID 
+                    Constants.fluxgrid = fluxgrid;
+
+
+                    // SET SLOPE AND SIDX
+                    switch (this.IMF)
+                    {
+                        case 0: // kr
+                            Constants.slope = 1.3f;
+                            break;
+                        case 1: // ss
+                            Constants.slope = 2.35f;
+                            break;
+
+                        default:
+                            throw new Exception("Unrecognised IMF");
+                    }
+                    Constants.sidx = Array.IndexOf(Constants.s, Constants.slope);
+
                 }
                 catch (Exception)
                 {

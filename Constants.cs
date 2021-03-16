@@ -7,10 +7,11 @@ namespace MachineLearningSpectralFittingCode
     
     public struct Constants
     {
-        // Example
-        // readonly public static float pi = 3.14f;
-        
-        // FORMAT : { Emission Name : Emission Values }
+        /* READ ONLY
+         */
+
+        // SPECTROSCOPY
+        //
         readonly public static Dictionary<string, float[]> Emission_lines = new Dictionary<string, float[]>
         {
             { "He-II" , new float[2] { 3202.15f, 4685.74f } },
@@ -34,12 +35,17 @@ namespace MachineLearningSpectralFittingCode
         };
 
 
+
+        // UNIVERSAL CONSTANTS
+
         // AGE OF UNIVERSE in YEARS
         readonly public static float AoU = 14.7e9f; // !!errorVaL!!
         // The speed of light in meters per second
         readonly public static float c = 299792458f;
 
 
+
+        // CONVERSION FACTORS
 
         // Conversion Factor From Degrees to Radians
         readonly public static float Deg2RadFactor = (float)Math.PI / 180f;
@@ -49,6 +55,8 @@ namespace MachineLearningSpectralFittingCode
         readonly public static float TwoPi = (float)Math.PI * 2f;
 
 
+
+        // OBSERVATIONAL ASTRONOMY PARAMETERS
 
         // RA(radians),Dec(radians),distance(kpc) of Galactic center in J2000
         readonly public static Vector Galactic_Center_Equatorial = 
@@ -67,7 +75,10 @@ namespace MachineLearningSpectralFittingCode
                     }, 1
                 );
 
-        // Cosmology Parameters
+
+
+        // Cosmology Parameters 
+        //
         readonly public static double H0units_to_invs = 3.240779289469756e-20f;
         readonly public static double sec_to_Gyr = 3.168808781402895e-17f;
         readonly public static double critdens_const = 1788445.339869672f; // g/cm^3
@@ -76,7 +87,12 @@ namespace MachineLearningSpectralFittingCode
         readonly public static double a_B_c2 = 8.418013525010775e-36f;
         readonly public static double kB_evK = 8.617333262145179e-05f; // eV/K
 
+
+        /* GLOBAL DATA
+         */
+
         // Models - DATA
+
         // MaStar
         public static double[] r_model { get; set; }
         public static float[] t { get; set; }
@@ -84,6 +100,13 @@ namespace MachineLearningSpectralFittingCode
         public static float[] s { get; set; }
         public static float[] wavelength { get; set; }
         public static float[,,,] fluxgrid { get; set; } // Line 326-329 - firefly models
+
+
+
+        // Models - Other
+        //
+        public static float slope { get; set; } = 0f;
+        public static int sidx { get; set; } = 0;
 
     }
 }

@@ -74,7 +74,7 @@ namespace MachineLearningSpectralFittingCode
         /// <summary>
         /// MODEL FLUXES - List of MODEL FLUXES
         /// </summary>
-        public float[][] Model_flux;
+        public Vector Model_flux;
         /// <summary>
         /// MODEL AGES
         /// </summary>
@@ -374,7 +374,7 @@ namespace MachineLearningSpectralFittingCode
             // this.raw_model_wave_int = model_wave_int
             // this.raw_model_flux_int ... this.metal = metal
             Match_data_models();
-            //NormaliseSpec();
+            NormaliseSpec();
 
             // Part 3 - correction from dust attenuation
             // -- LOG TIME COMPARISON -- CHECKPOINT
@@ -413,24 +413,8 @@ namespace MachineLearningSpectralFittingCode
             }
             else if (Program.config.Model_Key % 2 == 0)
             {
-                // This section can go to the config pre initialisation
-                var slope = 0f;
-                switch (Program.config.IMF)
-                {
-                    case 0: // kr
-                        slope = 1.3f;
-                        break;
-                    case 1: // ss
-                        slope = 2.35f;
-                        break;
 
-                    default:
-                        throw new Exception("Unrecognised IMF");
-                }
-                var sidx = Array.IndexOf(Constants.s, slope);
-                // This section - END
-
-                List<float[]> model_flux = new List<float[]>();
+                List<float> model_flux = new List<float>();
                 List<float> age_model = new List<float>();
                 List<float> metal_model = new List<float>();
 
@@ -454,13 +438,13 @@ namespace MachineLearningSpectralFittingCode
                             continue;
                         }
 
+
                         float[] flux = new float[4563];
                         for (int k = 0; k < 4563; k++)
                         {
-                            flux[k] = Constants.fluxgrid[i, j, sidx, k];
+                            flux[k] = Constants.fluxgrid[i, j, Constants.sidx, k];
                         }
 
-                        
                         // no conversion to vacuum needed, assuming models are in vacuum
 
                         goto skipDownGrade;
@@ -468,10 +452,6 @@ namespace MachineLearningSpectralFittingCode
                         if (Program.config.Downgrade_models)
                         {
                             flux = DownGrade(Constants.wavelength, flux, this.deltal, this.velocity_dispersion_r,this.Restframe_Wavelength, this.Instrument_Resolution);
-                        }
-                        else
-                        {
-                            // flux = flux
                         }
                         skipDownGrade:
 
@@ -482,7 +462,7 @@ namespace MachineLearningSpectralFittingCode
 
                             try
                             {
-                                model_flux.Add(Vector.ConsecutiveOperation(Program.gpu, (new Vector(flux)), (new Vector(attenuations)), '*').Value);
+                                model_flux.AddRange(Vector.ConsecutiveOperation(Program.gpu, (new Vector(flux)), (new Vector(attenuations)), '*').Value);
 
                             }
                             catch (Exception)
@@ -493,24 +473,21 @@ namespace MachineLearningSpectralFittingCode
                         }
                         else
                         {
-                            model_flux.Add(flux);
+                            model_flux.AddRange(flux);
                         }
                         
-
-
                         age_model.Add(i);
                         metal_model.Add(MathF.Pow(10f, j));
-
-                        flux = null;
 
                     }
                 }
 
                 this.Model_wavelength = Constants.wavelength;  // Lacking 1dp precision
-                this.Model_flux = model_flux.ToArray();      
+                this.Model_flux = new Vector(model_flux.ToArray(), model_flux.Count / age_model.Count ); // 2D flattened Array
                 this.Model_ages = age_model.ToArray();
                 this.Model_metals = metal_model.ToArray();
 
+                Console.WriteLine(this.Model_flux.Columns.ToString());
 
             }
             /*
@@ -544,16 +521,17 @@ namespace MachineLearningSpectralFittingCode
 
         private void NormaliseSpec()
         {
-            float data_norm = UtilityMethods.Median(this.Flux.Value);
-            int num_mods = this.Model_flux.Length;
-            float[] model_norm = new float[num_mods]; 
-            float[] mass_factor = model_norm;
-            float[] normed_model_flux = new float[num_mods * this.Model_flux[0].Length];
+            float data_norm = UtilityMethods.Median(this.Flux.Value);                 
+            int num_mods = this.Model_flux.Value.Length / this.Model_flux.Columns;     // 198
+            
+            float[] model_norm = new float[num_mods];                                 
+            float[] mass_factor = new float[num_mods];                                 
+            float[] normed_model_flux = new float[this.Model_flux.Value.Length];      
 
-            for (int i = 0; i < this.Model_flux[0].Length; i++)
+            for (int i = 0; i < num_mods; i++)
             {
-                model_norm[i] = UtilityMethods.Median(this.Model_flux[i]);
-                mass_factor[i] = data_norm / model_norm[i];
+                model_norm[i] = UtilityMethods.Median(this.Model_flux.Value[(i*this.Model_flux.Columns)..((i+1) * this.Model_flux.Columns)]); 
+                mass_factor[i] = data_norm / model_norm[i];                            
             }
 
             // Send these to the GPU
@@ -600,16 +578,16 @@ namespace MachineLearningSpectralFittingCode
             //float[] selected_Model_wl = this.Model_wavelength.Skip(idx_closest).Take(length).ToArray();
 
             // Normalise the Fluxes and shift everything into the range 0.1 - 1.1
-            Vector model_flux_norm = Vector.Normalise(Program.gpu, new Vector(this.Model_flux[model][idx_closest..(idx_closest+length)]), 0.1f);
+            //Vector model_flux_norm = Vector.Normalise(Program.gpu, new Vector(this.Model_flux[model][idx_closest..(idx_closest+length)]), 0.1f);
 
             Vector data_flux_norm = Vector.Normalise(Program.gpu, this.Flux, 0.1f);
             Vector data_error_norm = Vector.Normalise(Program.gpu, this.Error, 0.1f);
 
             float sum = 0f;
-            for (int j = 0; j < model_flux_norm.Value.Length; j++)
-            {
-                sum += MathF.Pow(((model_flux_norm.Value[j] - data_flux_norm.Value[j]) / data_error_norm.Value[j]), 2f);
-            }
+            //for (int j = 0; j < model_flux_norm.Value.Length; j++)
+            //{
+            //    sum += MathF.Pow(((model_flux_norm.Value[j] - data_flux_norm.Value[j]) / data_error_norm.Value[j]), 2f);
+            //}
             //Console.WriteLine($"Length of Data : {length} , starting @ {this.Restframe_Wavelength.Value[0]} and ending @ {this.Restframe_Wavelength.Value[length]}");
             //Console.WriteLine($"Length of Model : {selected_Model_wl.Length} , starting @ {selected_Model_wl[0]} and ending @ {selected_Model_wl[selected_Model_wl.Length - 1]}");
 
