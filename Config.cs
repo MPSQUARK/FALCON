@@ -211,7 +211,10 @@ namespace MachineLearningSpectralFittingCode
                     {
                         throw new Exception("MaStar Model Flavour Error Please choose between MaStar-Th and MaStar-E");
                     }
-                    
+
+                    Hdf5.CloseFile(id);
+
+
                     // SET FLUXGRID 
                     Constants.fluxgrid = fluxgrid;
 

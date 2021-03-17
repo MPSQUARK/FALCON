@@ -427,6 +427,10 @@ namespace MachineLearningSpectralFittingCode
             var buffer2 = gpu.Allocate<float>(vectorA.Value.Length); // Input
             var buffer3 = gpu.Allocate<float>(vectorA.Value.Length); // Input
 
+            buffer.MemSetToZero();
+            buffer2.MemSetToZero();
+            buffer3.MemSetToZero();
+
             buffer2.CopyFrom(vectorA.Value, 0, 0, vectorA.Value.Length);
             buffer3.CopyFrom(vectorB.Value, 0, 0, vectorB.Value.Length);
 
@@ -489,18 +493,22 @@ namespace MachineLearningSpectralFittingCode
             {
                 throw new Exception("vectorB should be a 1D vector of columns = 1");
             }
-            if (vectorA.Columns != vectorB.Value.Length)
+            if ((vectorA.Value.Length / vectorA.Columns) != vectorB.Value.Length)
             {
-                throw new Exception($"Length of VectorB : {vectorB.Value.Length} does NOT match number of columns in VectorA : {vectorA.Columns}");
+                throw new Exception($"Length of VectorB : {vectorB.Value.Length} does NOT match number of columns in VectorA : {(vectorA.Value.Length / vectorA.Columns)}");
             }
 
             AcceleratorStream Stream = gpu.CreateStream();
 
-            var kernelWithStream = gpu.LoadAutoGroupedKernel<Index1, ArrayView<float>, ArrayView<float>, ArrayView<float>, float, float>(ConsecutiveC_VPSP_2DKernel);
+            var kernelWithStream = gpu.LoadAutoGroupedKernel<Index1, ArrayView<float>, ArrayView<float>, ArrayView<float>, float, float>(ConsecutiveC_VDSP_2DKernel);
 
             var buffer = gpu.Allocate<float>(vectorA.Value.Length); // Output
             var buffer2 = gpu.Allocate<float>(vectorA.Value.Length); // Input
             var buffer3 = gpu.Allocate<float>(vectorA.Value.Length); // Input
+
+            buffer.MemSetToZero();
+            buffer2.MemSetToZero();
+            buffer3.MemSetToZero();
 
             buffer2.CopyFrom(vectorA.Value, 0, 0, vectorA.Value.Length);
             buffer3.CopyFrom(vectorB.Value, 0, 0, vectorB.Value.Length);
@@ -521,9 +529,9 @@ namespace MachineLearningSpectralFittingCode
             return new Vector(Output, vectorA.Columns);
         }
         // KERNEL
-        static void ConsecutiveC_VPSP_2DKernel(Index1 index, ArrayView<float> Output, ArrayView<float> InputA, ArrayView<float> InputB, float Cols, float Scalar)
+        static void ConsecutiveC_VDSP_2DKernel(Index1 index, ArrayView<float> Output, ArrayView<float> InputA, ArrayView<float> InputB, float Cols, float Scalar)
         {
-            Output[index] = InputA[index] * InputB[(int)XMath.RoundAwayFromZero(index % Cols)] * Scalar;
+            Output[index] = (InputA[index] / InputB[(int)(index / Cols)]) * Scalar;
         }
 
 

@@ -74,7 +74,7 @@ namespace MachineLearningSpectralFittingCode
         /// <summary>
         /// MODEL FLUXES - List of MODEL FLUXES
         /// </summary>
-        public Vector Model_flux;
+        public Vector Model_flux; // Becomes NORMED after Method - NormaliseSpec
         /// <summary>
         /// MODEL AGES
         /// </summary>
@@ -83,6 +83,7 @@ namespace MachineLearningSpectralFittingCode
         /// MODEL METALICITIES
         /// </summary>
         public float[] Model_metals;
+        public float[] Mass_factor;
 
 
         #endregion
@@ -476,8 +477,8 @@ namespace MachineLearningSpectralFittingCode
                             model_flux.AddRange(flux);
                         }
                         
-                        age_model.Add(i);
-                        metal_model.Add(MathF.Pow(10f, j));
+                        age_model.Add(Constants.t[i]);
+                        metal_model.Add(MathF.Pow(10f, Constants.Z[j]));
 
                     }
                 }
@@ -486,8 +487,6 @@ namespace MachineLearningSpectralFittingCode
                 this.Model_flux = new Vector(model_flux.ToArray(), model_flux.Count / age_model.Count ); // 2D flattened Array
                 this.Model_ages = age_model.ToArray();
                 this.Model_metals = metal_model.ToArray();
-
-                Console.WriteLine(this.Model_flux.Columns.ToString());
 
             }
             /*
@@ -526,7 +525,7 @@ namespace MachineLearningSpectralFittingCode
             
             float[] model_norm = new float[num_mods];                                 
             float[] mass_factor = new float[num_mods];                                 
-            float[] normed_model_flux = new float[this.Model_flux.Value.Length];      
+
 
             for (int i = 0; i < num_mods; i++)
             {
@@ -534,14 +533,10 @@ namespace MachineLearningSpectralFittingCode
                 mass_factor[i] = data_norm / model_norm[i];                            
             }
 
-            // Send these to the GPU
-            //normed_model_flux.Value[i] = this.Model_flux[i] / model_norm.Value[i] * data_norm;
+            // OVER-WRITES MODEL FLUX WITH THE NORMALISED MODEL FLUX
+            this.Model_flux = Vector.ConsecutiveCompoundOperation2D(Program.gpu, this.Model_flux, new Vector(model_norm), data_norm, "**");
+            this.Mass_factor = mass_factor;
 
-            /*
-             * sets the 
-             * model_flux
-             * mass_factors
-             */
         }
 
         private float[] DownGrade(float[] wavelength, float[] flux, double deltal, int vdisp_round, Vector rest_wavelength, Vector r_instrument)
@@ -563,7 +558,7 @@ namespace MachineLearningSpectralFittingCode
 
 
         // EXPERIMENTAL CODE
-        public float CalculateChiSqu(int model) // Vector Data_wavelength, Vector Data_flux, Vector Data_Error, float[] Model_wavelength, float[] Model_flux
+        public float CalculateChiSqu(int model)
         {
             // Get length of Data
             var length = this.Restframe_Wavelength.Value.Length;
@@ -574,20 +569,14 @@ namespace MachineLearningSpectralFittingCode
             // Gets Index of Closest Value
             int idx_closest = Array.IndexOf(this.Model_wavelength, Closest_Start_Val);
 
-            // Get wavelength
-            //float[] selected_Model_wl = this.Model_wavelength.Skip(idx_closest).Take(length).ToArray();
-
-            // Normalise the Fluxes and shift everything into the range 0.1 - 1.1
-            //Vector model_flux_norm = Vector.Normalise(Program.gpu, new Vector(this.Model_flux[model][idx_closest..(idx_closest+length)]), 0.1f);
-
-            Vector data_flux_norm = Vector.Normalise(Program.gpu, this.Flux, 0.1f);
-            Vector data_error_norm = Vector.Normalise(Program.gpu, this.Error, 0.1f);
+            // Select the Model Flux for the Model
+            float[] model_flux = this.Model_flux.Value[((model * this.Model_flux.Columns) + idx_closest)..((model * this.Model_flux.Columns) + idx_closest + length)];
 
             float sum = 0f;
-            //for (int j = 0; j < model_flux_norm.Value.Length; j++)
-            //{
-            //    sum += MathF.Pow(((model_flux_norm.Value[j] - data_flux_norm.Value[j]) / data_error_norm.Value[j]), 2f);
-            //}
+            for (int j = 0; j < model_flux.Length; j++)
+            {
+                sum += MathF.Pow(((model_flux[j] - this.Flux.Value[j]) / this.Error.Value[j]), 2f);
+            }
             //Console.WriteLine($"Length of Data : {length} , starting @ {this.Restframe_Wavelength.Value[0]} and ending @ {this.Restframe_Wavelength.Value[length]}");
             //Console.WriteLine($"Length of Model : {selected_Model_wl.Length} , starting @ {selected_Model_wl[0]} and ending @ {selected_Model_wl[selected_Model_wl.Length - 1]}");
 
