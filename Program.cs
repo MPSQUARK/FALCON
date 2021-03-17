@@ -20,7 +20,7 @@ namespace MachineLearningSpectralFittingCode
 
         static void Main()
         {
-            var watch = System.Diagnostics.Stopwatch.StartNew();
+            //var watch = System.Diagnostics.Stopwatch.StartNew();
 
             // PRE-INITIALISATION
             File.WriteAllText($"{PathOfProgram}Log.txt", $"{System.DateTime.Now} : Starting Pre-Initialisation\n");
@@ -38,6 +38,12 @@ namespace MachineLearningSpectralFittingCode
 
             // PROGRAM START
             Console.WriteLine("Start");
+
+            // TEST CODE
+            //float[] testvar = new float[10] { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10 };
+
+
+            //var testvar2 = testvar[];
 
 
             
@@ -66,58 +72,64 @@ namespace MachineLearningSpectralFittingCode
 
 
 
-            Spectral_Model spectral_Model = new Spectral_Model(Data_path, config.Milky_Way_Reddening, config.HPF_Mode, config.N_Masked_Amstrongs);
-            spectral_Model.InitialiseSpectraParameters(gpu, Data, config.Redshift, config.RA_DEC, config.Velocity_Dispersion, config.Instrument_Resolution);
-            spectral_Model.Fit_models_to_data();
+            //Spectral_Model spectral_Model = new Spectral_Model(Data_path, config.Milky_Way_Reddening, config.HPF_Mode, config.N_Masked_Amstrongs);
+            //spectral_Model.InitialiseSpectraParameters(gpu, Data, config.Redshift, config.RA_DEC, config.Velocity_Dispersion, config.Instrument_Resolution);
+            //spectral_Model.Fit_models_to_data();
 
-            float[] chis = new float[spectral_Model.Model_ages.Length];
+            //float[] chis = new float[spectral_Model.Model_ages.Length];
 
-            for (int i = 0; i < chis.Length; i++)
-            {
-                chis[i] = spectral_Model.CalculateChiSqu(i);
-            }
+            //for (int i = 0; i < chis.Length; i++)
+            //{
+            //    chis[i] = spectral_Model.CalculateChiSqu(i);
+            //}
 
 
 
-            watch.Stop();
-            var elapsedMs = watch.ElapsedMilliseconds;
-            Console.WriteLine("Time Taken to reach setup " + (elapsedMs * 0.001f).ToString() + "s");
+            //watch.Stop();
+            //var elapsedMs = watch.ElapsedMilliseconds;
+            //Console.WriteLine("Time Taken to reach setup " + (elapsedMs * 0.001f).ToString() + "s");
 
-            for (int i = 0; i < chis.Length; i++)
-            {
-                Console.WriteLine($"model {i} : chi {chis[i]}");
-            }
+
+            /* GETS THE MASS OF THE GALAXY
+             * Console.WriteLine(((1f/spectral_Model.Mass_factor[188]) * 1e-17f).ToString());
+             */
+
+
+            //for (int i = 0; i < chis.Length; i++)
+            //{
+            //    Console.WriteLine($"model {i} : chi {chis[i]}");
+            //}
 
 
             // Get length of Data
-            var length = spectral_Model.Restframe_Wavelength.Value.Length;
+            //var length = spectral_Model.Restframe_Wavelength.Value.Length;
 
-            // Finds the closest start value
-            float Closest_Start_Val = spectral_Model.Model_wavelength.OrderBy(n => Math.Abs(spectral_Model.Restframe_Wavelength.Value[0] - n)).First();
+            //// Finds the closest start value
+            //float Closest_Start_Val = spectral_Model.Model_wavelength.OrderBy(n => Math.Abs(spectral_Model.Restframe_Wavelength.Value[0] - n)).First();
 
-            // Gets Index of Closest Value
-            int idx_closest = Array.IndexOf(spectral_Model.Model_wavelength, Closest_Start_Val);
+            //// Gets Index of Closest Value
+            //int idx_closest = Array.IndexOf(spectral_Model.Model_wavelength, Closest_Start_Val);
 
 
 
             // WRITES MODEL DATA TO HDF5 FORMAT FOR PLOTTING
-            string fileName = Program.PathOfProgram + @"modelOutput.h5";
-            long fileId = Hdf5.CreateFile(fileName);
+            //string fileName = Program.PathOfProgram + @"modelOutput.h5";
+            //long fileId = Hdf5.CreateFile(fileName);
 
-            Hdf5.WriteDatasetFromArray<float>(fileId, "model_wavelength_trimmed", spectral_Model.Model_wavelength[idx_closest..(idx_closest+length)]);
-            
-            Hdf5.WriteDatasetFromArray<float>(fileId, "model_flux_norm", spectral_Model.Model_flux.Value);
-            Hdf5.WriteDatasetFromArray<int>(fileId, "model_flux_shape", new int[3] { spectral_Model.Model_ages.Length, spectral_Model.Model_flux.Columns, idx_closest });
-            
-            Hdf5.WriteDatasetFromArray<float>(fileId, "model_ages", spectral_Model.Model_ages);
-            Hdf5.WriteDatasetFromArray<float>(fileId, "model_metals", spectral_Model.Model_metals);
-            Hdf5.WriteDatasetFromArray<float>(fileId, "model_chis", chis);
+            //Hdf5.WriteDatasetFromArray<float>(fileId, "model_wavelength_trimmed", spectral_Model.Model_wavelength[idx_closest..(idx_closest+length)]);
 
-            Hdf5.WriteDatasetFromArray<float>(fileId, "data_wavelength_RestFrame", spectral_Model.Restframe_Wavelength.Value);
-            Hdf5.WriteDatasetFromArray<float>(fileId, "data_flux", spectral_Model.Flux.Value);
-            Hdf5.WriteDatasetFromArray<float>(fileId, "data_error", spectral_Model.Error.Value);
+            //Hdf5.WriteDatasetFromArray<float>(fileId, "model_flux_norm", spectral_Model.Model_flux.Value);
+            //Hdf5.WriteDatasetFromArray<int>(fileId, "model_flux_shape", new int[3] { spectral_Model.Model_ages.Length, spectral_Model.Model_flux.Columns, idx_closest });
 
-            Hdf5.CloseFile(fileId);
+            //Hdf5.WriteDatasetFromArray<float>(fileId, "model_ages", spectral_Model.Model_ages);
+            //Hdf5.WriteDatasetFromArray<float>(fileId, "model_metals", spectral_Model.Model_metals);
+            //Hdf5.WriteDatasetFromArray<float>(fileId, "model_chis", chis);
+
+            //Hdf5.WriteDatasetFromArray<float>(fileId, "data_wavelength_RestFrame", spectral_Model.Restframe_Wavelength.Value);
+            //Hdf5.WriteDatasetFromArray<float>(fileId, "data_flux", spectral_Model.Flux.Value);
+            //Hdf5.WriteDatasetFromArray<float>(fileId, "data_error", spectral_Model.Error.Value);
+
+            //Hdf5.CloseFile(fileId);
 
 
             // Read Models is 

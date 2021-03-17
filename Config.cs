@@ -24,51 +24,67 @@ namespace MachineLearningSpectralFittingCode
         }
 
         // CONFIG OF HARDWARE   
-        private List<AcceleratorId> AcceleratorIds = new List<AcceleratorId>();
-        private List<byte> GPU_ids = new List<byte>();
-        public bool HasGPU = false;
         public bool Has_Multi_GPU  = false;
 
         public void GetHardware()
         {
+            List<AcceleratorId> AcceleratorIds = new List<AcceleratorId>();
+            
+            List<byte> N_GPU_ids = new List<byte>();
+            List<byte> CL_GPU_ids = new List<byte>();
 
             foreach (var accelerator in Accelerator.Accelerators)
             {
 
                 string type = accelerator.AcceleratorType.ToString();
                 float id = 0;
-                if (type == "Cuda" || type == "OpenCL")
-                {
-                    this.AcceleratorIds.Add(accelerator);
-                    this.GPU_ids.Add((byte)id);
-                    id++;
-                }
-                else if (type == "CPU")
-                {
-                    continue;
-                }
-                else
-                {
-                    Console.WriteLine("Unknown hardware detected");
-                }
-            }
 
-            if (this.GPU_ids.Count > 1)
-            {
-                this.Has_Multi_GPU = true;
-            }
-            else if (GPU_ids.Count == 1)
-            {
-                this.HasGPU = true;
-            }
-            else
-            {
-                Console.WriteLine("Warning no GPU detected");
+                switch (type)
+                {
+                    case "Cuda":
+                        AcceleratorIds.Add(accelerator);
+                        N_GPU_ids.Add((byte)id);
+                        id++;
+                        break;
+
+                    case "OpenCL":
+                        AcceleratorIds.Add(accelerator);
+                        CL_GPU_ids.Add((byte)id);
+                        id++;
+                        break;
+
+                    case "CPU":
+                        break;
+
+                    default:
+                        Console.WriteLine("Unknown hardware detected");
+                        break;
+                }
             }
 
             Program.context = new Context();
             Program.context.EnableAlgorithms();
-            Program.gpu = Accelerator.Create(Program.context, AcceleratorIds[GPU_ids[0]]);
+
+            if (N_GPU_ids.Count >= 1)
+            {
+                Program.gpu = Accelerator.Create(Program.context, AcceleratorIds[N_GPU_ids[0]]);
+            }
+            else if (CL_GPU_ids.Count >= 1)
+            {
+                Program.gpu = Accelerator.Create(Program.context, AcceleratorIds[CL_GPU_ids[0]]);
+            }
+            
+            if (N_GPU_ids.Count + CL_GPU_ids.Count > 1)
+            {
+                this.Has_Multi_GPU = true;
+                return;
+            }
+
+            if (N_GPU_ids.Count + CL_GPU_ids.Count < 1)
+            {
+                throw new Exception("NO GPU DETECTED");
+            }
+
         }
 
         // To be used for code performace analysis accross various hardware
