@@ -478,7 +478,7 @@ namespace MachineLearningSpectralFittingCode
                         }
                         
                         age_model.Add(Constants.t[i]);
-                        metal_model.Add(MathF.Pow(10f, Constants.Z[j]));
+                        metal_model.Add(Constants.Z[j]); // In FireFly 10^{Z[j]} is used to get Metalicity in units of Solar Metalicity
 
                     }
                 }
