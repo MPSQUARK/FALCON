@@ -1,4 +1,5 @@
 ﻿using ILGPU;
+using ILGPU.Algorithms;
 using ILGPU.Runtime;
 using System;
 using System.Collections.Generic;
@@ -12,7 +13,7 @@ namespace MachineLearningSpectralFittingCode
     class Spectral_Model
     {
         public Spectral_Model(string path,
-                       bool milky_Way_Reddening = false, // SHOULD BE TRUE
+                       bool milky_Way_Reddening = true, // SHOULD BE TRUE
                        bool hPF_Mode = true,
                        ushort n_Masked_Amstrongs = 20)
         {
@@ -84,6 +85,7 @@ namespace MachineLearningSpectralFittingCode
         /// </summary>
         public float[] Model_metals;
         public float[] Mass_factor;
+        public int[] MatchingWavelengthMapping;
 
 
         #endregion
@@ -142,7 +144,9 @@ namespace MachineLearningSpectralFittingCode
         retryInstru:
             try
             {
-                this.Instrument_Resolution = Vector.Fill(gpu, instrument_resolution, this.Wavelength.Value.Length);
+                //this.Instrument_Resolution = Vector.Fill(gpu, instrument_resolution, this.Wavelength.Value.Length);
+                float[] testvec = Vector.Fill(gpu, 2000f, 4000);
+                Console.WriteLine(testvec[0]);
             }
             catch (Exception)
             {
@@ -374,7 +378,7 @@ namespace MachineLearningSpectralFittingCode
 
             // this.raw_model_wave_int = model_wave_int
             // this.raw_model_flux_int ... this.metal = metal
-            Match_data_models();
+            //Match_data_models(); ?? UNNESSESSARY?
             NormaliseSpec();
 
             // Part 3 - correction from dust attenuation
@@ -396,6 +400,8 @@ namespace MachineLearningSpectralFittingCode
 
         private void Get_Model()
         {
+
+            // M11 Models
             if (Program.config.Model_Key % 2 == 1)
             {
                 //var first_file = true;
@@ -410,10 +416,16 @@ namespace MachineLearningSpectralFittingCode
                 //.
                 //.
 
-
+                return;
             }
-            else if (Program.config.Model_Key % 2 == 0)
+            
+            // MaStar Models
+            if (Program.config.Model_Key % 2 == 0)
             {
+                // Gets Wavelengths from Model Data
+                this.Model_wavelength = Constants.wavelength;  // Lacking 1dp precision
+                // Gets Indexes of Models matching wavlengths
+                this.TrimModel();
 
                 List<float> model_flux = new List<float>();
                 List<float> age_model = new List<float>();
@@ -439,22 +451,21 @@ namespace MachineLearningSpectralFittingCode
                             continue;
                         }
 
-
-                        float[] flux = new float[4563];
-                        for (int k = 0; k < 4563; k++)
+                        // TRIM DOWN THE WAVELENGTH AND THE FLUX to correspond to Data
+                        float[] flux = new float[Constants.wavelength.Length];
+                        for (int k = 0; k < flux.Length; k++)
                         {
                             flux[k] = Constants.fluxgrid[i, j, Constants.sidx, k];
                         }
 
+
                         // no conversion to vacuum needed, assuming models are in vacuum
 
-                        goto skipDownGrade;
                         // downgrades the model
                         if (Program.config.Downgrade_models)
                         {
-                            flux = DownGrade(Constants.wavelength, flux, this.deltal, this.velocity_dispersion_r,this.Restframe_Wavelength, this.Instrument_Resolution);
+                            //flux = this.DownGrade(Constants.wavelength, flux, this.deltal, this.velocity_dispersion_r,this.Restframe_Wavelength, this.Instrument_Resolution);
                         }
-                        skipDownGrade:
 
                         // Reddens the models
                         if (this.ebv_MW != 0)
@@ -483,20 +494,96 @@ namespace MachineLearningSpectralFittingCode
                     }
                 }
 
-                this.Model_wavelength = Constants.wavelength;  // Lacking 1dp precision
-                this.Model_flux = new Vector(model_flux.ToArray(), model_flux.Count / age_model.Count ); // 2D flattened Array
+                this.Model_flux = new Vector(model_flux.ToArray(), Constants.wavelength.Length ); // 2D flattened Array
                 this.Model_ages = age_model.ToArray();
                 this.Model_metals = metal_model.ToArray();
 
+                return;
             }
-            /*
-             * sets the
-             * model_wave_int == Model_wavelength
-             * model_flux_int == Model_flux
-             * age            == Model_ages 
-             * metal          == Model_metals
-             */
 
+
+        }
+
+        private void TrimModel()
+        {
+
+            int length_Data = this.Restframe_Wavelength.Value.Length;
+            int length_Mod  = this.Model_wavelength.Length;
+
+            if (this.Model_wavelength[0] < this.Restframe_Wavelength.Value[0] && this.Model_wavelength[^1] > this.Restframe_Wavelength.Value[^1])
+            {
+
+                float[] endVal = (from mwl in this.Model_wavelength
+                                  select Math.Abs(mwl - this.Restframe_Wavelength.Value[^1])).ToArray();
+
+                int endIdx = Array.IndexOf(endVal, endVal.Min()) + 1;
+
+
+                float[] startVal = (from mwl in this.Model_wavelength[0..(endIdx+1)]
+                                    select Math.Abs(mwl - this.Restframe_Wavelength.Value[0])).ToArray();
+
+                int startIdx = Array.IndexOf(startVal, startVal.Min());
+
+
+                if (endIdx - startIdx == length_Data)
+                {
+                    this.MatchingWavelengthMapping = Enumerable.Range(startIdx, endIdx - startIdx).ToArray();
+                    return;
+                }
+
+
+                if (endIdx - startIdx != length_Data)
+                {
+                    int[] indxs = new int[length_Data];
+                    indxs[0] = startIdx;
+                    indxs[^1] = endIdx;
+                    for (int i = 1; i < indxs.Length-1; i++)
+                    {
+                        float[] matchtest = (from mwl in this.Model_wavelength[0..endIdx]
+                                             select Math.Abs(mwl - this.Restframe_Wavelength.Value[i])).ToArray();
+                        indxs[i] = Array.IndexOf(matchtest, matchtest.Min());
+                    }
+
+                    this.MatchingWavelengthMapping = indxs;
+                    return;
+                }
+
+            }
+
+            Console.WriteLine("WARNING TRIMMODEL FUNC REACHED UNFINISHED CODE");
+
+            return;
+        }
+
+        private float[] DownGrade(float[] mod_wavelength, float[] flux, double deltal, int vdisp_round, Vector rest_wavelength, Vector r_instrument)
+        {
+
+            // var sres = mod_wavelength / deltal;
+
+            var new_sig = new float[mod_wavelength.Length];
+
+            for (int i = 0, j=0; i < mod_wavelength.Length; i++)
+            {
+                // wi is index and w is mod_wavelength[wi]
+
+                if (this.MatchingWavelengthMapping.Contains(i))
+                {
+                    j++;
+                }
+                
+                float sig_instrument = Constants.c_kms / (r_instrument.Value[j] * Constants.sig2FWHM);
+                new_sig[i] = MathF.Sqrt(MathF.Pow(vdisp_round, 2f) + MathF.Pow(sig_instrument, 2f)); 
+
+            }
+
+            for (int i = 0; i < 100; i++)
+            {
+                Console.WriteLine(new_sig[i].ToString());
+            }
+
+
+
+            return flux;
         }
 
         private void Match_data_models()
@@ -539,13 +626,6 @@ namespace MachineLearningSpectralFittingCode
 
         }
 
-        private float[] DownGrade(float[] wavelength, float[] flux, double deltal, int vdisp_round, Vector rest_wavelength, Vector r_instrument)
-        {
-
-
-            return flux;
-        }
-
         private float[] unred(float[] wavelength, float ebv_mw)
         {
 
@@ -557,7 +637,7 @@ namespace MachineLearningSpectralFittingCode
         #endregion
 
 
-        // EXPERIMENTAL CODE
+        // Test CODE
         public float CalculateChiSqu(int model)
         {
             // Get length of Data
@@ -572,6 +652,10 @@ namespace MachineLearningSpectralFittingCode
             // Select the Model Flux for the Model
             float[] model_flux = this.Model_flux.Value[((model * this.Model_flux.Columns) + idx_closest)..((model * this.Model_flux.Columns) + idx_closest + length)];
 
+            // Get the Length
+            //int length = this.Model_flux.Columns;
+            //float[] model_flux = this.Model_flux.Value[(model * length)..((model + 1) * length)];
+
             float sum = 0f;
             for (int j = 0; j < model_flux.Length; j++)
             {
@@ -581,6 +665,84 @@ namespace MachineLearningSpectralFittingCode
             //Console.WriteLine($"Length of Model : {selected_Model_wl.Length} , starting @ {selected_Model_wl[0]} and ending @ {selected_Model_wl[selected_Model_wl.Length - 1]}");
 
             return sum;
+        }
+
+
+        // EXPERIMENTAL CODE DONT USE YET
+        public float[] CalculateChiSquVec(Accelerator gpu)
+        {
+            int length_Data = this.Restframe_Wavelength.Value.Length;
+            int length_Mod = this.Model_wavelength.Length;
+            int models = length_Data / length_Mod;
+
+            float[] endVal = (from mwl in this.Model_wavelength
+                              select Math.Abs(mwl - this.Restframe_Wavelength.Value[^1])).ToArray();
+
+            int endIdx = Array.IndexOf(endVal, endVal.Min()) + 1;
+
+
+            float[] startVal = (from mwl in this.Model_wavelength[0..(endIdx + 1)]
+                                select Math.Abs(mwl - this.Restframe_Wavelength.Value[0])).ToArray();
+
+            int startIdx = Array.IndexOf(startVal, startVal.Min());
+
+            int model_len = endIdx - startIdx;
+
+            List<float> new_mod_flux = new List<float>();
+            for (int i = 0; i < models; i++)
+            {
+
+                float[] vals = this.Model_flux.Value[(i * length_Mod + startIdx)..(i * length_Mod + endIdx)];
+                new_mod_flux.AddRange(vals);
+            }
+
+
+            AcceleratorStream Stream = gpu.CreateStream();
+
+            var kernelWithStream = gpu.LoadAutoGroupedKernel<Index1, ArrayView<float>, ArrayView<float>, ArrayView<float>, ArrayView<float>, int>(CalcChiKernel);
+
+            var buffer = gpu.Allocate<float>(new_mod_flux.Count); // Output
+            var buffer2 = gpu.Allocate<float>(new_mod_flux.Count); // Input
+            var buffer3 = gpu.Allocate<float>(model_len); // Input
+            var buffer4 = gpu.Allocate<float>(model_len); // Input
+
+            buffer.MemSetToZero();
+            buffer2.MemSetToZero();
+            buffer3.MemSetToZero();
+            buffer4.MemSetToZero();
+
+            buffer2.CopyFrom(new_mod_flux.ToArray(), 0, 0, new_mod_flux.Count);
+            buffer3.CopyFrom(this.Flux.Value, 0, 0, this.Flux.Value.Length);
+            buffer4.CopyFrom(this.Error.Value, 0, 0, this.Error.Value.Length);
+
+
+
+            kernelWithStream(Stream, buffer.Length, buffer.View, buffer2.View, buffer3.View, buffer4.View , model_len);
+
+            Stream.Synchronize();
+
+            float[] Output = buffer.GetAsArray();
+
+            buffer.Dispose();
+            buffer2.Dispose();
+            buffer3.Dispose();
+            buffer4.Dispose();
+
+            Stream.Dispose();
+
+            float[] chis = new float[models];
+            for (int i = 0; i < models; i++)
+            {
+                chis[i] = Output[(i * model_len)..((i + 1) * model_len)].Sum();
+            }
+
+
+            return chis;
+        }
+        // Kernel
+        static void CalcChiKernel(Index1 index, ArrayView<float> Output, ArrayView<float> InputMod_flux, ArrayView<float> InputDat_flux, ArrayView<float> InputDat_err, int model_len)
+        {
+            Output[index] = XMath.Pow((InputMod_flux[index] - InputDat_flux[index % model_len]) / InputDat_err[index % model_len], 2f);
         }
 
 

@@ -342,3 +342,4 @@ healthchecksdb
 /Flux.txt
 /modeldata.h5
 /modelOutput.h5
+/StellarPopulationModels/MaStar_SSP.h5

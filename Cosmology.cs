@@ -266,14 +266,9 @@ namespace MachineLearningSpectralFittingCode
 
         public float integral_comoving_distance(float redshift)
         {
-            if (Program.config.HasGPU)
-            {
-                return this.hubble_distance * GPU_Integration(Program.gpu, redshift, 1e-8f, this.inv_efunc_scalar_args);
-            }
-            else
-            {
-                return this.hubble_distance * Integrate(inv_efunc_scalar, redshift, 1e-8f, inv_efunc_scalar_args);
-            }
+
+            return this.hubble_distance * GPU_Integration(Program.gpu, redshift, 1e-8f, this.inv_efunc_scalar_args);
+
         }
 
 

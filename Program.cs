@@ -14,13 +14,13 @@ namespace MachineLearningSpectralFittingCode
         // Singleton Instances
         public static Config config;
         public static Cosmology cosmology;
-        public static string PathOfProgram = "C:/Users/Marcelpaw/source/repos/MachineLearningSpectralFittingCode/";
+        public static string PathOfProgram = AppDomain.CurrentDomain.BaseDirectory; //"C:/Users/Marcelpaw/source/repos/MachineLearningSpectralFittingCode/";
         public static Context context;
         public static Accelerator gpu;
 
         static void Main()
         {
-            //var watch = System.Diagnostics.Stopwatch.StartNew();
+            var watch = System.Diagnostics.Stopwatch.StartNew();
 
             // PRE-INITIALISATION
             File.WriteAllText($"{PathOfProgram}Log.txt", $"{System.DateTime.Now} : Starting Pre-Initialisation\n");
@@ -30,7 +30,13 @@ namespace MachineLearningSpectralFittingCode
             //config.RecordSystemInfo();
 
 
+            //Context context2 = new Context();
+            
+            //Accelerator gpu2 = Accelerator.Create(context2, Accelerator.Accelerators.First());
 
+            // FIX BY MAKING GPU LOCAL and PASSING AS VAR
+            float[] testvec = Vector.Fill(gpu, 2000f, 4000);
+            Console.WriteLine(testvec[0]);
 
 
             // VARIABLE BLOCK
@@ -39,66 +45,52 @@ namespace MachineLearningSpectralFittingCode
             // PROGRAM START
             Console.WriteLine("Start");
 
-            // TEST CODE
-            //float[] testvar = new float[10] { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10 };
-
-
-            //var testvar2 = testvar[];
-
-
-            
-            //var tree = Hdf5.ReadTreeFileStructure(fileName);
-
-            //float[] fluxgrid = new float[4563];
-            //for (int i = 0; i < 4563; i++)
-            //{
-            //    fluxgrid[i] = readobj[0, 0, 0, i];
-            //}
-
-            //Console.WriteLine(fluxgrid.ToString());
-
-
-            Console.WriteLine("reading hdf5");
-            //for (int i = 0; i < hdata.Length; i++)
-            //{
-            //    Console.WriteLine(hdata[i]);
-            //}
-
-
 
             //// READ IN DATA
             Vector Data = new Vector(UtilityMethods.ReadData(Data_path), 3); // Data Is read in as a 2D Vector of 3 columns
-            
+
+            //Spectral_Model[] spectral_Models = new Spectral_Model[500];
+
+            //Parallel.For(0, 500, i =>
+            //{
+
+               Spectral_Model spectral_Model = new Spectral_Model(Data_path, config.Milky_Way_Reddening, config.HPF_Mode, config.N_Masked_Amstrongs);
+                spectral_Model.InitialiseSpectraParameters(gpu, Data, config.Redshift, config.RA_DEC, config.Velocity_Dispersion, config.Instrument_Resolution);
+                spectral_Model.Fit_models_to_data();
+
+                float[] chis = new float[spectral_Model.Model_ages.Length];
+
+                for (int j = 0; j < chis.Length; j++)
+                {
+                    chis[j] = spectral_Model.CalculateChiSqu(j);
+                }
+
+            //float[] chisFast = spectral_Model.CalculateChiSquVec(gpu);
+            //});
 
 
+            watch.Stop();
+            var elapsedMs = watch.ElapsedMilliseconds;
+            Console.WriteLine("Time Taken to Complete " + (elapsedMs * 0.001f).ToString() + "s");
+            Console.WriteLine("Time Taken to Complete per Spectra " + (elapsedMs * 0.001f / 500f).ToString() + "s");
 
-            //Spectral_Model spectral_Model = new Spectral_Model(Data_path, config.Milky_Way_Reddening, config.HPF_Mode, config.N_Masked_Amstrongs);
-            //spectral_Model.InitialiseSpectraParameters(gpu, Data, config.Redshift, config.RA_DEC, config.Velocity_Dispersion, config.Instrument_Resolution);
-            //spectral_Model.Fit_models_to_data();
-
-            //float[] chis = new float[spectral_Model.Model_ages.Length];
 
             //for (int i = 0; i < chis.Length; i++)
             //{
-            //    chis[i] = spectral_Model.CalculateChiSqu(i);
+            //    Console.WriteLine($"{chis[i] / spectral_Model.Flux.Value.Length} index {i}"); //- chisFast[i]);
             //}
 
 
 
-            //watch.Stop();
-            //var elapsedMs = watch.ElapsedMilliseconds;
-            //Console.WriteLine("Time Taken to reach setup " + (elapsedMs * 0.001f).ToString() + "s");
+            //Console.WriteLine("Recording System Info");
+
+
+            //config.RecordSystemInfo();
 
 
             /* GETS THE MASS OF THE GALAXY
              * Console.WriteLine(((1f/spectral_Model.Mass_factor[188]) * 1e-17f).ToString());
              */
-
-
-            //for (int i = 0; i < chis.Length; i++)
-            //{
-            //    Console.WriteLine($"model {i} : chi {chis[i]}");
-            //}
 
 
             // Get length of Data
@@ -152,6 +144,8 @@ namespace MachineLearningSpectralFittingCode
             // PROGRAM END
             Console.WriteLine("End");
             File.AppendAllText($"{PathOfProgram}Log.txt", $"{System.DateTime.Now} : Program Terminated \n");
+
+            Console.ReadLine();
 
         }
 

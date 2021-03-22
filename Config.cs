@@ -112,7 +112,7 @@ namespace MachineLearningSpectralFittingCode
             {
                 // Create default accelerator for the given accelerator id.
                 // Note that all accelerators have to be disposed before the global context is disposed
-                using (var accelerator = Accelerator.Create(context, AcceleratorIds[GPU_ids[0]]))
+                using (var accelerator = Program.gpu)
                 {
 
                     File.AppendAllText($"{Program.PathOfProgram}Log.txt", $"GPU Name : {accelerator.Name}".Trim() + "\n");
@@ -196,7 +196,7 @@ namespace MachineLearningSpectralFittingCode
             // run this function upon Config Application - Pre-Initialisation Phase
 
             // Read in Hdf5 Data File/s
-            string fileName = Program.PathOfProgram + @"data.h5";
+            string fileName = Program.PathOfProgram + @"StellarPopulationModels/MaStar_SSP.h5";
             long id = Hdf5.OpenFile(fileName, true);
 
             // Load Data For Ma-Star Models
