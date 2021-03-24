@@ -15,32 +15,37 @@ namespace MachineLearningSpectralFittingCode
         public static Config config;
         public static Cosmology cosmology;
         public static string PathOfProgram = AppDomain.CurrentDomain.BaseDirectory; //"C:/Users/Marcelpaw/source/repos/MachineLearningSpectralFittingCode/";
-        public static Context context;
-        public static Accelerator gpu;
 
         static void Main()
         {
+            // Variable BLOCK
+            Context context = new Context();
+            context.EnableAlgorithms();
+
+            string Data_path = PathOfProgram + @"\Data\spec-0266-51602-0001.dat";
+
+            // Timer
             var watch = System.Diagnostics.Stopwatch.StartNew();
 
-            // PRE-INITIALISATION
+            /* PRE-INITIALISATION
+            */
             File.WriteAllText($"{PathOfProgram}Log.txt", $"{System.DateTime.Now} : Starting Pre-Initialisation\n");
+            
+            // Set Configs
             config = new Config();
+            Accelerator gpu = config.GetHardware(context);
+
+
+            // Set Cosmology
             cosmology = new Cosmology();
             cosmology.Initialise();
             //config.RecordSystemInfo();
 
 
-            //Context context2 = new Context();
-            
-            //Accelerator gpu2 = Accelerator.Create(context2, Accelerator.Accelerators.First());
-
-            // FIX BY MAKING GPU LOCAL and PASSING AS VAR
-            float[] testvec = Vector.Fill(gpu, 2000f, 4000);
-            Console.WriteLine(testvec[0]);
 
 
-            // VARIABLE BLOCK
-            string Data_path = PathOfProgram + @"\Data\spec-0266-51602-0001.dat";
+            // Enable UI to SET User Defined config
+
 
             // PROGRAM START
             Console.WriteLine("Start");
@@ -49,23 +54,38 @@ namespace MachineLearningSpectralFittingCode
             //// READ IN DATA
             Vector Data = new Vector(UtilityMethods.ReadData(Data_path), 3); // Data Is read in as a 2D Vector of 3 columns
 
+            Spectral_Model spectral_Model = new Spectral_Model(Data_path, config.Milky_Way_Reddening, config.HPF_Mode, config.N_Masked_Amstrongs, gpu);
+            spectral_Model.InitialiseSpectraParameters(Data, config.Redshift, config.RA_DEC, config.Velocity_Dispersion, config.Instrument_Resolution);
+            spectral_Model.Fit_models_to_data();
+
+            float[] chis = new float[spectral_Model.Model_ages.Length];
+
+            for (int j = 0; j < chis.Length; j++)
+            {
+                chis[j] = spectral_Model.CalculateChiSqu(j);
+            }
+
+
+
+
+
             //Spectral_Model[] spectral_Models = new Spectral_Model[500];
 
             //Parallel.For(0, 500, i =>
             //{
 
-               Spectral_Model spectral_Model = new Spectral_Model(Data_path, config.Milky_Way_Reddening, config.HPF_Mode, config.N_Masked_Amstrongs);
-                spectral_Model.InitialiseSpectraParameters(gpu, Data, config.Redshift, config.RA_DEC, config.Velocity_Dispersion, config.Instrument_Resolution);
-                spectral_Model.Fit_models_to_data();
+            //   spectral_Models[i] = new Spectral_Model(Data_path, config.Milky_Way_Reddening, config.HPF_Mode, config.N_Masked_Amstrongs, gpu);
+            //   spectral_Models[i].InitialiseSpectraParameters(Data, config.Redshift, config.RA_DEC, config.Velocity_Dispersion, config.Instrument_Resolution);
+            //   spectral_Models[i].Fit_models_to_data();
 
-                float[] chis = new float[spectral_Model.Model_ages.Length];
+            //   float[] chis = new float[spectral_Models[i].Model_ages.Length];
 
-                for (int j = 0; j < chis.Length; j++)
-                {
-                    chis[j] = spectral_Model.CalculateChiSqu(j);
-                }
+            //for (int j = 0; j < chis.Length; j++)
+            //{
+            //    chis[j] = spectral_Models[i].CalculateChiSqu(j);
+            //}
 
-            //float[] chisFast = spectral_Model.CalculateChiSquVec(gpu);
+            ////float[] chisFast = spectral_Model.CalculateChiSquVec(gpu);
             //});
 
 

@@ -35,7 +35,7 @@ namespace MachineLearningSpectralFittingCode
 
 
         // Creates a Uniform Vector where all values are = Value
-        public static float[] Fill(Accelerator gpu, float Value, int Size, int Columns = 1)
+        public static Vector Fill(Accelerator gpu, float Value, int Size, int Columns = 1)
         {
 
             AcceleratorStream Stream = gpu.CreateStream();
@@ -43,19 +43,19 @@ namespace MachineLearningSpectralFittingCode
             var kernelWithStream = gpu.LoadAutoGroupedKernel<Index1, ArrayView<float>, float>(FillKernel);
 
             var buffer = gpu.Allocate<float>(Size); // Output
-            buffer.MemSetToZero();
+            buffer.MemSetToZero(Stream);
 
             kernelWithStream(Stream, buffer.Length, buffer.View, Value);
 
             Stream.Synchronize();
 
-            float[] Output = buffer.GetAsArray();
+            float[] Output = buffer.GetAsArray(Stream);
 
             buffer.Dispose();
 
             Stream.Dispose();
 
-            return Output; //new Vector(Output, Columns);
+            return new Vector(Output, Columns);
         }
         // KERNEL
         static void FillKernel(Index1 index, ArrayView<float> OutPut, float Value)

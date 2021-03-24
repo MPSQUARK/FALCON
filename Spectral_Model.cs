@@ -15,13 +15,17 @@ namespace MachineLearningSpectralFittingCode
         public Spectral_Model(string path,
                        bool milky_Way_Reddening = true, // SHOULD BE TRUE
                        bool hPF_Mode = true,
-                       ushort n_Masked_Amstrongs = 20)
+                       ushort n_Masked_Amstrongs = 20,
+                       Accelerator GPU = null)
         {
             this.Path = path;
             this.Milky_Way_Reddening = milky_Way_Reddening;
             this.HPF_Mode = hPF_Mode;
             this.N_Masked_Amstrongs = n_Masked_Amstrongs;
+            this.gpu = GPU;
         }
+
+        Accelerator gpu;
 
         // SPECTRA SPECIFIC VARIABLES
         #region
@@ -91,7 +95,7 @@ namespace MachineLearningSpectralFittingCode
         #endregion
 
         // Spectrum Initialisation
-        public async void InitialiseSpectraParameters(Accelerator gpu, Vector Data, float Redshift, float[] RA_DEC, float Velocity_Disp, float instrument_resolution) // also include emission lines masking
+        public async void InitialiseSpectraParameters(Vector Data, float Redshift, float[] RA_DEC, float Velocity_Disp, float instrument_resolution) // also include emission lines masking
         {
             bool warn = false;
 
@@ -104,7 +108,7 @@ namespace MachineLearningSpectralFittingCode
             catch (Exception)
             {
                 warn = true;
-                await Task.Delay(100);
+                await Task.Delay(50);
                 goto retryWave;
             }
 
@@ -112,12 +116,12 @@ namespace MachineLearningSpectralFittingCode
             try
             {
                 // Set Long tasks to execute
-                this.Flux = await Vector.AccessSliceAsync(gpu, Data, 1, 'c');  // FLUX
+                this.Flux = Vector.AccessSlice(gpu, Data, 1, 'c');  // FLUX
             }
             catch (Exception)
             {
                 warn = true;
-                await Task.Delay(100);
+                await Task.Delay(50);
                 goto retryFlux;
             }
 
@@ -130,7 +134,7 @@ namespace MachineLearningSpectralFittingCode
             catch (Exception)
             {
                 warn = true;
-                await Task.Delay(100);
+                await Task.Delay(50);
                 goto retryErr;
             }
 
@@ -141,17 +145,16 @@ namespace MachineLearningSpectralFittingCode
             this.Trust_Flag = 1;
             this.ObjID = 0;
 
+
         retryInstru:
             try
             {
-                //this.Instrument_Resolution = Vector.Fill(gpu, instrument_resolution, this.Wavelength.Value.Length);
-                float[] testvec = Vector.Fill(gpu, 2000f, 4000);
-                Console.WriteLine(testvec[0]);
+                this.Instrument_Resolution = Vector.Fill(gpu, instrument_resolution, this.Wavelength.Value.Length);
             }
             catch (Exception)
             {
                 warn = true;
-                Task.Delay(100);
+                await Task.Delay(50);
                 goto retryInstru;
             }
 
@@ -174,7 +177,7 @@ namespace MachineLearningSpectralFittingCode
             catch (Exception)
             {
                 warn = true;
-                await Task.Delay(100);
+                await Task.Delay(50);
                 goto retryRestWave;
             }
 
@@ -183,7 +186,7 @@ namespace MachineLearningSpectralFittingCode
         retryBadDat:
             try
             {
-                float[] BadDataMask = this.GenerateDataMask(gpu, this.Flux, this.Error);
+                float[] BadDataMask = this.GenerateDataMask(this.Flux, this.Error);
 
                 if (BadDataMask.Contains(0f))
                 {
@@ -199,7 +202,7 @@ namespace MachineLearningSpectralFittingCode
             catch (Exception)
             {
                 warn = true;
-                await Task.Delay(100);
+                await Task.Delay(50);
                 goto retryBadDat;
             }
 
@@ -268,7 +271,7 @@ namespace MachineLearningSpectralFittingCode
 
         // SPECTRAL - SPECTRUM FUNCTIONS
         #region
-        private float[] GenerateDataMask(Accelerator gpu, Vector flux, Vector Error) // Also add emission lines filter
+        private float[] GenerateDataMask(Vector flux, Vector Error) // Also add emission lines filter
         {
 
             AcceleratorStream Stream = gpu.CreateStream();
@@ -378,7 +381,7 @@ namespace MachineLearningSpectralFittingCode
 
             // this.raw_model_wave_int = model_wave_int
             // this.raw_model_flux_int ... this.metal = metal
-            //Match_data_models(); ?? UNNESSESSARY?
+            //Match_data_models(); 
             NormaliseSpec();
 
             // Part 3 - correction from dust attenuation
@@ -464,7 +467,7 @@ namespace MachineLearningSpectralFittingCode
                         // downgrades the model
                         if (Program.config.Downgrade_models)
                         {
-                            //flux = this.DownGrade(Constants.wavelength, flux, this.deltal, this.velocity_dispersion_r,this.Restframe_Wavelength, this.Instrument_Resolution);
+                            flux = this.DownGrade(Constants.wavelength, flux, this.deltal, this.velocity_dispersion_r,this.Restframe_Wavelength, this.Instrument_Resolution);
                         }
 
                         // Reddens the models
@@ -474,7 +477,7 @@ namespace MachineLearningSpectralFittingCode
 
                             try
                             {
-                                model_flux.AddRange(Vector.ConsecutiveOperation(Program.gpu, (new Vector(flux)), (new Vector(attenuations)), '*').Value);
+                                model_flux.AddRange(Vector.ConsecutiveOperation(gpu, (new Vector(flux)), (new Vector(attenuations)), '*').Value);
 
                             }
                             catch (Exception)
@@ -564,22 +567,19 @@ namespace MachineLearningSpectralFittingCode
 
             for (int i = 0, j=0; i < mod_wavelength.Length; i++)
             {
-                // wi is index and w is mod_wavelength[wi]
-
-                if (this.MatchingWavelengthMapping.Contains(i))
+                if (this.MatchingWavelengthMapping[..^1].Contains(i))
                 {
                     j++;
                 }
                 
                 float sig_instrument = Constants.c_kms / (r_instrument.Value[j] * Constants.sig2FWHM);
-                new_sig[i] = MathF.Sqrt(MathF.Pow(vdisp_round, 2f) + MathF.Pow(sig_instrument, 2f)); 
+                new_sig[i] = MathF.Sqrt(MathF.Pow(vdisp_round, 2f) + MathF.Pow(sig_instrument, 2f));
 
             }
 
-            for (int i = 0; i < 100; i++)
-            {
-                Console.WriteLine(new_sig[i].ToString());
-            }
+
+            Console.WriteLine(new_sig.Length);
+            Console.WriteLine(this.Model_wavelength.Length);
 
 
 
@@ -621,7 +621,7 @@ namespace MachineLearningSpectralFittingCode
             }
 
             // OVER-WRITES MODEL FLUX WITH THE NORMALISED MODEL FLUX
-            this.Model_flux = Vector.ConsecutiveCompoundOperation2D(Program.gpu, this.Model_flux, new Vector(model_norm), data_norm, "**");
+            this.Model_flux = Vector.ConsecutiveCompoundOperation2D(gpu, this.Model_flux, new Vector(model_norm), data_norm, "**");
             this.Mass_factor = mass_factor;
 
         }
@@ -669,7 +669,7 @@ namespace MachineLearningSpectralFittingCode
 
 
         // EXPERIMENTAL CODE DONT USE YET
-        public float[] CalculateChiSquVec(Accelerator gpu)
+        public float[] CalculateChiSquVec()
         {
             int length_Data = this.Restframe_Wavelength.Value.Length;
             int length_Mod = this.Model_wavelength.Length;
@@ -706,10 +706,10 @@ namespace MachineLearningSpectralFittingCode
             var buffer3 = gpu.Allocate<float>(model_len); // Input
             var buffer4 = gpu.Allocate<float>(model_len); // Input
 
-            buffer.MemSetToZero();
-            buffer2.MemSetToZero();
-            buffer3.MemSetToZero();
-            buffer4.MemSetToZero();
+            buffer.MemSetToZero(Stream);
+            buffer2.MemSetToZero(Stream);
+            buffer3.MemSetToZero(Stream);
+            buffer4.MemSetToZero(Stream);
 
             buffer2.CopyFrom(new_mod_flux.ToArray(), 0, 0, new_mod_flux.Count);
             buffer3.CopyFrom(this.Flux.Value, 0, 0, this.Flux.Value.Length);
@@ -721,7 +721,7 @@ namespace MachineLearningSpectralFittingCode
 
             Stream.Synchronize();
 
-            float[] Output = buffer.GetAsArray();
+            float[] Output = buffer.GetAsArray(Stream);
 
             buffer.Dispose();
             buffer2.Dispose();

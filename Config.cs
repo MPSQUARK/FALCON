@@ -18,7 +18,7 @@ namespace MachineLearningSpectralFittingCode
         public Config()
         {
             // Get Hardware Data
-            GetHardware();
+            //GetHardware();
             // Get Model Data 
             GetModelData();
         }
@@ -26,7 +26,7 @@ namespace MachineLearningSpectralFittingCode
         // CONFIG OF HARDWARE   
         public bool Has_Multi_GPU  = false;
 
-        public void GetHardware()
+        public Accelerator GetHardware(Context context)
         {
             List<AcceleratorId> AcceleratorIds = new List<AcceleratorId>();
             
@@ -62,22 +62,20 @@ namespace MachineLearningSpectralFittingCode
                 }
             }
 
-            Program.context = new Context();
-            Program.context.EnableAlgorithms();
+            Accelerator gpu = Accelerator.Current;
 
             if (N_GPU_ids.Count >= 1)
             {
-                Program.gpu = Accelerator.Create(Program.context, AcceleratorIds[N_GPU_ids[0]]);
+                gpu = Accelerator.Create(context, AcceleratorIds[N_GPU_ids[0]]);
             }
             else if (CL_GPU_ids.Count >= 1)
             {
-                Program.gpu = Accelerator.Create(Program.context, AcceleratorIds[CL_GPU_ids[0]]);
+                gpu = Accelerator.Create(context, AcceleratorIds[CL_GPU_ids[0]]);
             }
             
             if (N_GPU_ids.Count + CL_GPU_ids.Count > 1)
             {
                 this.Has_Multi_GPU = true;
-                return;
             }
 
             if (N_GPU_ids.Count + CL_GPU_ids.Count < 1)
@@ -85,10 +83,11 @@ namespace MachineLearningSpectralFittingCode
                 throw new Exception("NO GPU DETECTED");
             }
 
+            return gpu;
         }
 
         // To be used for code performace analysis accross various hardware
-        public void RecordSystemInfo()
+        public void RecordSystemInfo(Accelerator gpu)
         {
 
             // Console.WriteLine("64 Bit operating system? : {0}", Environment.Is64BitOperatingSystem ? "Yes" : "No");
@@ -112,7 +111,7 @@ namespace MachineLearningSpectralFittingCode
             {
                 // Create default accelerator for the given accelerator id.
                 // Note that all accelerators have to be disposed before the global context is disposed
-                using (var accelerator = Program.gpu)
+                using (var accelerator = gpu)
                 {
 
                     File.AppendAllText($"{Program.PathOfProgram}Log.txt", $"GPU Name : {accelerator.Name}".Trim() + "\n");

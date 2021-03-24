@@ -171,8 +171,8 @@ namespace MachineLearningSpectralFittingCode
                 };
             }
 
-            // Further optimisations
 
+            // Further optimisations
             this.Or0_OptiA = (float)(this.Ogamma0 + (0.22710731766f * this.neff_per_nu * this.Ogamma0 * this.nmasslessnu));
             this.Or0_OptiB = (float)(0.22710731766f * this.neff_per_nu * this.Ogamma0);
             this.nuyp_Opti = MathF.Pow(this.nu_y[0], 1.83f);
@@ -253,21 +253,21 @@ namespace MachineLearningSpectralFittingCode
 
         }
 
-        public float luminosity_distance(float redshift)
+        public float luminosity_distance(Accelerator gpu, float redshift)
         {
-            return (1f + redshift) * comoving_transverse_distance(redshift);
+            return (1f + redshift) * comoving_transverse_distance(gpu, redshift);
         }
 
-        public float comoving_transverse_distance(float redshift)
+        public float comoving_transverse_distance(Accelerator gpu, float redshift)
         {
-            float dc = integral_comoving_distance(redshift);
+            float dc = integral_comoving_distance(gpu, redshift);
             return dc;
         }
 
-        public float integral_comoving_distance(float redshift)
+        public float integral_comoving_distance(Accelerator gpu, float redshift)
         {
 
-            return this.hubble_distance * GPU_Integration(Program.gpu, redshift, 1e-8f, this.inv_efunc_scalar_args);
+            return this.hubble_distance * GPU_Integration(gpu, redshift, 1e-8f, this.inv_efunc_scalar_args);
 
         }
 
