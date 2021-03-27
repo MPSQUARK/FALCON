@@ -69,8 +69,7 @@ namespace MachineLearningSpectralFittingCode
         #region
         int velocity_dispersion_r { get; set; }
         int fit_per_iteration_cap { get; set; }
-        List<double> delta_lamdba_lib { get; set; }
-        double deltal { get; set; }
+        double[] delta_lambda { get; set; }
         // Model Main Values
         /// <summary>
         /// MODEL wavelengths
@@ -238,28 +237,28 @@ namespace MachineLearningSpectralFittingCode
         // Model Initialisation
         private void InitialiseSPModel()
         {
-            this.delta_lamdba_lib = new List<double>();
+            
             switch (Program.config.Model_Key)
             {
                 case 0b00001_001:
-                    this.delta_lamdba_lib.Add(2.55d);
+                    this.delta_lambda = new double[1] { 2.55d };
                     break;
                 case 0b00010_001:
-                    this.delta_lamdba_lib.Add(3.40d);
+                    this.delta_lambda = new double[1] { 3.40d };
                     break;
                 case 0b00100_001:
-                    this.delta_lamdba_lib.Add(0.55d);
+                    this.delta_lambda = new double[1] { 0.55d };
                     break;
                 case 0b01000_001:
-                    this.delta_lamdba_lib.Add(0.10d);
+                    this.delta_lambda = new double[1] { 0.10d };
                     break;
 
 
                 case 0b00001_010:
-                    this.delta_lamdba_lib.AddRange(Constants.r_model);
+                    this.delta_lambda = Constants.r_model;
                     break;
                 case 0b00010_010:
-                    this.delta_lamdba_lib.AddRange(Constants.r_model);
+                    this.delta_lambda = Constants.r_model;
                     break;
 
                 default:
@@ -282,19 +281,19 @@ namespace MachineLearningSpectralFittingCode
             var buffer2 = gpu.Allocate<float>(flux.Value.Length);
             var buffer3 = gpu.Allocate<float>(Error.Value.Length);
 
-            buffer.MemSetToZero();
-            buffer2.MemSetToZero();
-            buffer3.MemSetToZero();
+            buffer.MemSetToZero(Stream);
+            buffer2.MemSetToZero(Stream);
+            buffer3.MemSetToZero(Stream);
 
-            buffer2.CopyFrom(flux.Value, 0, 0, flux.Value.Length);
-            buffer3.CopyFrom(Error.Value, 0, 0, Error.Value.Length);
+            buffer2.CopyFrom(Stream, flux.Value, 0, 0, flux.Value.Length);
+            buffer3.CopyFrom(Stream, Error.Value, 0, 0, Error.Value.Length);
 
 
             kernelWithStream(Stream, buffer.Length, buffer.View, buffer2.View, buffer3.View);
 
             Stream.Synchronize();
 
-            float[] Output = buffer.GetAsArray();
+            float[] Output = buffer.GetAsArray(Stream);
 
             buffer.Dispose();
             buffer2.Dispose();
@@ -375,7 +374,6 @@ namespace MachineLearningSpectralFittingCode
 
             // enumerate over imfs (ii)
             // only 1 imf so, foreach ii in imfs
-            this.deltal = this.delta_lamdba_lib[0];
             this.Get_Model(); //sets: model_wave_int,model_flux_int,age,metal
 
 
@@ -467,8 +465,9 @@ namespace MachineLearningSpectralFittingCode
                         // downgrades the model
                         if (Program.config.Downgrade_models)
                         {
-                            flux = this.DownGrade(Constants.wavelength, flux, this.deltal, this.velocity_dispersion_r,this.Restframe_Wavelength, this.Instrument_Resolution);
+                            flux = this.DownGrade(Constants.wavelength, flux, this.delta_lambda, this.velocity_dispersion_r,this.Restframe_Wavelength, this.Instrument_Resolution);
                         }
+                        
 
                         // Reddens the models
                         if (this.ebv_MW != 0)
@@ -558,12 +557,22 @@ namespace MachineLearningSpectralFittingCode
             return;
         }
 
-        private float[] DownGrade(float[] mod_wavelength, float[] flux, double deltal, int vdisp_round, Vector rest_wavelength, Vector r_instrument)
+        private float[] DownGrade(float[] mod_wavelength, float[] flux, double[] deltal, int vdisp_round, Vector rest_wavelength, Vector r_instrument)
         {
 
-            // var sres = mod_wavelength / deltal;
+            double[] sres;
+            // Can be Taken Out the Spectral_Model Class <
+            if (deltal.Length == 1)
+            {
+                 sres = Vector.ScalarOperation_D(gpu, new Vector(mod_wavelength), (1d / deltal[0]), '*');
+            }
+            else
+            {
+                sres = deltal;
+            }
+            // Can be Taken Out the Spectral_Model Class />
 
-            var new_sig = new float[mod_wavelength.Length];
+            float[] new_sig = new float[mod_wavelength.Length];
 
             for (int i = 0, j=0; i < mod_wavelength.Length; i++)
             {
@@ -578,10 +587,19 @@ namespace MachineLearningSpectralFittingCode
             }
 
 
-            Console.WriteLine(new_sig.Length);
-            Console.WriteLine(this.Model_wavelength.Length);
+            // IF mod_wavelength < 5 -> raise an error ?? Unlikely
+
+            if ((mod_wavelength[3] - mod_wavelength[2]) - (mod_wavelength[2] - mod_wavelength[1]) < 0.000001f * (mod_wavelength[2] - mod_wavelength[1]) )
+            {
+                bool log_wave = false;
+            }
+            else
+            {
+                bool log_wave = true;
+            }
 
 
+            // Call match_spectral_resolution(mod_wavelength, flux, sres, )
 
             return flux;
         }
@@ -661,8 +679,6 @@ namespace MachineLearningSpectralFittingCode
             {
                 sum += MathF.Pow(((model_flux[j] - this.Flux.Value[j]) / this.Error.Value[j]), 2f);
             }
-            //Console.WriteLine($"Length of Data : {length} , starting @ {this.Restframe_Wavelength.Value[0]} and ending @ {this.Restframe_Wavelength.Value[length]}");
-            //Console.WriteLine($"Length of Model : {selected_Model_wl.Length} , starting @ {selected_Model_wl[0]} and ending @ {selected_Model_wl[selected_Model_wl.Length - 1]}");
 
             return sum;
         }
@@ -711,9 +727,9 @@ namespace MachineLearningSpectralFittingCode
             buffer3.MemSetToZero(Stream);
             buffer4.MemSetToZero(Stream);
 
-            buffer2.CopyFrom(new_mod_flux.ToArray(), 0, 0, new_mod_flux.Count);
-            buffer3.CopyFrom(this.Flux.Value, 0, 0, this.Flux.Value.Length);
-            buffer4.CopyFrom(this.Error.Value, 0, 0, this.Error.Value.Length);
+            buffer2.CopyFrom(Stream, new_mod_flux.ToArray(), 0, 0, new_mod_flux.Count);
+            buffer3.CopyFrom(Stream, this.Flux.Value, 0, 0, this.Flux.Value.Length);
+            buffer4.CopyFrom(Stream, this.Error.Value, 0, 0, this.Error.Value.Length);
 
 
 

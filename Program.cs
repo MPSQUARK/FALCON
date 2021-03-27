@@ -21,6 +21,7 @@ namespace MachineLearningSpectralFittingCode
             // Variable BLOCK
             Context context = new Context();
             context.EnableAlgorithms();
+            Accelerator gpu;
 
             string Data_path = PathOfProgram + @"\Data\spec-0266-51602-0001.dat";
 
@@ -33,13 +34,13 @@ namespace MachineLearningSpectralFittingCode
             
             // Set Configs
             config = new Config();
-            Accelerator gpu = config.GetHardware(context);
-
+            gpu = config.GetHardware(context);
+            //config.RecordSystemInfo();
 
             // Set Cosmology
             cosmology = new Cosmology();
             cosmology.Initialise();
-            //config.RecordSystemInfo();
+            
 
 
 

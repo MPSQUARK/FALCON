@@ -296,13 +296,13 @@ namespace MachineLearningSpectralFittingCode
             var kernelWithStream = gpu.LoadAutoGroupedKernel<Index1, ArrayView<float>, float, float, float, float, float, float, float>(GPU_IntegrationKernal);
 
             var buffer = gpu.Allocate<float>(length);
-            buffer.MemSetToZero();
+            buffer.MemSetToZero(Stream);
 
             kernelWithStream(Stream, buffer.Length, buffer.View, dz, args.Ogamma0, args.Om0, args.Ode0, args.neff_per_nu, args.nmasslessnu, args.nu_y[0]);
 
             Stream.Synchronize();
 
-            float[] Output = buffer.GetAsArray();
+            float[] Output = buffer.GetAsArray(Stream);
 
             buffer.Dispose();
 
@@ -321,13 +321,13 @@ namespace MachineLearningSpectralFittingCode
             var kernelWithStream = gpu.LoadAutoGroupedKernel<Index1, ArrayView<float>, float, float, float, float, float, float, float>(GPU_IntegrationKernal);
 
             var buffer = gpu.Allocate<float>(length);
-            buffer.MemSetToZero();
+            buffer.MemSetToZero(Stream);
 
             kernelWithStream(Stream, buffer.Length, buffer.View, dz, (float)this.Ogamma0, this.Om0, this.Ode0, this.neff_per_nu, this.nmasslessnu, this.nu_y[0]);
 
             Stream.Synchronize();
 
-            float[] Output = buffer.GetAsArray();
+            float[] Output = buffer.GetAsArray(Stream);
 
             buffer.Dispose();
 
@@ -347,13 +347,13 @@ namespace MachineLearningSpectralFittingCode
             var kernelWithStream = gpu.LoadAutoGroupedKernel<Index1, ArrayView<float>, float, float, float, float, float, float, float>(GPU_IntegrationOptiKernal);
 
             var buffer = gpu.Allocate<float>(length);
-            buffer.MemSetToZero();
+            buffer.MemSetToZero(Stream);
 
             kernelWithStream(Stream, buffer.Length, buffer.View, dz, this.Om0, this.Ode0, this.nmasslessnu, this.Or0_OptiA, this.Or0_OptiB, this.nuyp_Opti);
 
             Stream.Synchronize();
 
-            float[] Output = buffer.GetAsArray();
+            float[] Output = buffer.GetAsArray(Stream);
 
             buffer.Dispose();
 

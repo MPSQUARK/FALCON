@@ -104,18 +104,18 @@ namespace MachineLearningSpectralFittingCode
             var buffer2 = gpu.Allocate<float>(vector.Value.Length);
             var buffer3 = gpu.Allocate<int>(5);
 
-            buffer.MemSetToZero();
-            buffer2.MemSetToZero();
-            buffer3.MemSetToZero();
+            buffer.MemSetToZero(Stream);
+            buffer2.MemSetToZero(Stream);
+            buffer3.MemSetToZero(Stream);
 
-            buffer2.CopyFrom(vector.Value, 0, 0, vector.Value.Length);
-            buffer3.CopyFrom(ChangeSelectLength, 0, 0, ChangeSelectLength.Length);
+            buffer2.CopyFrom(Stream, vector.Value, 0, 0, vector.Value.Length);
+            buffer3.CopyFrom(Stream, ChangeSelectLength, 0, 0, ChangeSelectLength.Length);
 
             kernelWithStream(Stream, OutPutVectorLength, buffer.View, buffer2.View, buffer3.View);
 
             Stream.Synchronize();
 
-            float[] Output = buffer.GetAsArray();
+            float[] Output = buffer.GetAsArray(Stream);
 
             buffer.Dispose();
             buffer2.Dispose();
@@ -161,18 +161,18 @@ namespace MachineLearningSpectralFittingCode
             var buffer2 = gpu.Allocate<float>(vector.Value.Length);
             var buffer3 = gpu.Allocate<int>(5);
 
-            buffer.MemSetToZero();
-            buffer2.MemSetToZero();
-            buffer3.MemSetToZero();
+            buffer.MemSetToZero(Stream);
+            buffer2.MemSetToZero(Stream);
+            buffer3.MemSetToZero(Stream);
 
-            buffer2.CopyFrom(vector.Value, 0, 0, vector.Value.Length);
-            buffer3.CopyFrom(ChangeSelectLength, 0, 0, ChangeSelectLength.Length);
+            buffer2.CopyFrom(Stream, vector.Value, 0, 0, vector.Value.Length);
+            buffer3.CopyFrom(Stream, ChangeSelectLength, 0, 0, ChangeSelectLength.Length);
 
             kernelWithStream(Stream, OutPutVectorLength, buffer.View, buffer2.View, buffer3.View);
 
             Stream.Synchronize();
 
-            float[] Output = buffer.GetAsArray();
+            float[] Output = buffer.GetAsArray(Stream);
 
             buffer.Dispose();
             buffer2.Dispose();
@@ -204,10 +204,10 @@ namespace MachineLearningSpectralFittingCode
             var buffer = gpu.Allocate<float>(vector.Value.Length);
             var buffer2 = gpu.Allocate<float>(vector.Value.Length);
 
-            buffer.MemSetToZero();
-            buffer2.MemSetToZero();
+            buffer.MemSetToZero(Stream);
+            buffer2.MemSetToZero(Stream);
 
-            buffer2.CopyFrom(vector.Value, 0, 0, vector.Value.Length);
+            buffer2.CopyFrom(Stream, vector.Value, 0, 0, vector.Value.Length);
 
             var kernelWithStream = gpu.LoadAutoGroupedKernel<Index1, ArrayView<float>, ArrayView<float>, float>(ScalarProductKernal);
 
@@ -228,7 +228,7 @@ namespace MachineLearningSpectralFittingCode
 
             Stream.Synchronize();
 
-            float[] Output = buffer.GetAsArray();
+            float[] Output = buffer.GetAsArray(Stream);
 
             buffer.Dispose();
             buffer2.Dispose();
@@ -252,6 +252,67 @@ namespace MachineLearningSpectralFittingCode
         }
 
 
+        // SCALAR OPERATIONS : Vector * Scalar, Vector / Scalar, Vector +|- Scalar
+        public static double[] ScalarOperation_D(Accelerator gpu, Vector vector, double scalar, char operation = '*')
+        {
+
+            AcceleratorStream Stream = gpu.CreateStream();
+
+            var buffer = gpu.Allocate<double>(vector.Value.Length);
+            var buffer2 = gpu.Allocate<float>(vector.Value.Length);
+
+            buffer.MemSetToZero(Stream);
+            buffer2.MemSetToZero(Stream);
+
+            buffer2.CopyFrom(Stream, vector.Value, 0, 0, vector.Value.Length);
+
+            var kernelWithStream = gpu.LoadAutoGroupedKernel<Index1, ArrayView<double>, ArrayView<float>, double>(ScalarProduct_DKernal);
+
+            switch (operation)
+            {
+                case '*':
+                    kernelWithStream = gpu.LoadAutoGroupedKernel<Index1, ArrayView<double>, ArrayView<float>, double>(ScalarProduct_DKernal);
+                    break;
+                case '/':
+                    kernelWithStream = gpu.LoadAutoGroupedKernel<Index1, ArrayView<double>, ArrayView<float>, double>(ScalarDivide_DKernal);
+                    break;
+                case '+':
+                    kernelWithStream = gpu.LoadAutoGroupedKernel<Index1, ArrayView<double>, ArrayView<float>, double>(ScalarSum_DKernal);
+                    break;
+            }
+
+            kernelWithStream(Stream, buffer.Length, buffer.View, buffer2.View, scalar);
+
+            Stream.Synchronize();
+
+            double[] Output = buffer.GetAsArray(Stream);
+
+            buffer.Dispose();
+            buffer2.Dispose();
+
+            Stream.Dispose();
+
+            return Output;
+        }
+        // KERNELS
+        static void ScalarProduct_DKernal(Index1 index, ArrayView<double> OutPut, ArrayView<float> Input, double Scalar)
+        {
+            OutPut[index] = Input[index] * Scalar;
+        }
+        static void ScalarDivide_DKernal(Index1 index, ArrayView<double> OutPut, ArrayView<float> Input, double Scalar)
+        {
+            OutPut[index] = Input[index] / Scalar;
+        }
+        static void ScalarSum_DKernal(Index1 index, ArrayView<double> OutPut, ArrayView<float> Input, double Scalar)
+        {
+            OutPut[index] = Input[index] + Scalar;
+        }
+
+
+
+
+
+
 
         // COMPOUND SCALAR OPERATIONS : Vector * Scalar1 +|- Scaler2, Vector / Scalar1 +|- Scalar2
         /// <summary>
@@ -272,10 +333,10 @@ namespace MachineLearningSpectralFittingCode
 
             var buffer = gpu.Allocate<float>(vector.Value.Length);
             var buffer2 = gpu.Allocate<float>(vector.Value.Length);
-            buffer.MemSetToZero();
-            buffer2.MemSetToZero();
+            buffer.MemSetToZero(Stream);
+            buffer2.MemSetToZero(Stream);
 
-            buffer2.CopyFrom(vector.Value, 0, 0, vector.Value.Length);
+            buffer2.CopyFrom(Stream, vector.Value, 0, 0, vector.Value.Length);
 
             switch (operation)
             {
@@ -297,7 +358,7 @@ namespace MachineLearningSpectralFittingCode
 
             Stream.Synchronize();
 
-            float[] Output = buffer.GetAsArray();
+            float[] Output = buffer.GetAsArray(Stream);
 
             buffer.Dispose();
             buffer2.Dispose();
@@ -324,6 +385,7 @@ namespace MachineLearningSpectralFittingCode
             OutPut[index] = (Input[index] + Adder) / Divisor ;
         }
 
+
         // Multiplies 2 Vectors Element by Element
         public static Vector ConsecutiveOperation(Accelerator gpu, Vector vectorA, Vector vectorB, char operation = '*')
         {
@@ -340,12 +402,12 @@ namespace MachineLearningSpectralFittingCode
             var buffer2 = gpu.Allocate<float>(vectorA.Value.Length); // Input
             var buffer3 = gpu.Allocate<float>(vectorA.Value.Length); // Output
 
-            buffer.MemSetToZero();
-            buffer2.MemSetToZero();
-            buffer3.MemSetToZero();
+            buffer.MemSetToZero(Stream);
+            buffer2.MemSetToZero(Stream);
+            buffer3.MemSetToZero(Stream);
 
-            buffer.CopyFrom(vectorA.Value, 0, 0, vectorA.Value.Length);
-            buffer2.CopyFrom(vectorB.Value, 0, 0, vectorB.Value.Length);
+            buffer.CopyFrom(Stream, vectorA.Value, 0, 0, vectorA.Value.Length);
+            buffer2.CopyFrom(Stream, vectorB.Value, 0, 0, vectorB.Value.Length);
 
             switch (operation)
             {
@@ -367,7 +429,7 @@ namespace MachineLearningSpectralFittingCode
 
             Stream.Synchronize();
 
-            float[] Output = buffer3.GetAsArray();
+            float[] Output = buffer3.GetAsArray(Stream);
 
             buffer.Dispose();
             buffer2.Dispose();
@@ -403,6 +465,7 @@ namespace MachineLearningSpectralFittingCode
 
         }
 
+
         // Multiplies 2 Vectors Element by Element, where Vector A is 2D and Vector B is 1D
         public static Vector ConsecutiveOperation2D(Accelerator gpu, Vector vectorA, Vector vectorB, char operation = '*')
         {
@@ -427,12 +490,12 @@ namespace MachineLearningSpectralFittingCode
             var buffer2 = gpu.Allocate<float>(vectorA.Value.Length); // Input
             var buffer3 = gpu.Allocate<float>(vectorA.Value.Length); // Input
 
-            buffer.MemSetToZero();
-            buffer2.MemSetToZero();
-            buffer3.MemSetToZero();
+            buffer.MemSetToZero(Stream);
+            buffer2.MemSetToZero(Stream);
+            buffer3.MemSetToZero(Stream);
 
-            buffer2.CopyFrom(vectorA.Value, 0, 0, vectorA.Value.Length);
-            buffer3.CopyFrom(vectorB.Value, 0, 0, vectorB.Value.Length);
+            buffer2.CopyFrom(Stream, vectorA.Value, 0, 0, vectorA.Value.Length);
+            buffer3.CopyFrom(Stream, vectorB.Value, 0, 0, vectorB.Value.Length);
 
             switch (operation)
             {
@@ -454,7 +517,7 @@ namespace MachineLearningSpectralFittingCode
 
             Stream.Synchronize();
 
-            float[] Output = buffer.GetAsArray();
+            float[] Output = buffer.GetAsArray(Stream);
 
             buffer.Dispose();
             buffer2.Dispose();
@@ -506,19 +569,19 @@ namespace MachineLearningSpectralFittingCode
             var buffer2 = gpu.Allocate<float>(vectorA.Value.Length); // Input
             var buffer3 = gpu.Allocate<float>(vectorA.Value.Length); // Input
 
-            buffer.MemSetToZero();
-            buffer2.MemSetToZero();
-            buffer3.MemSetToZero();
+            buffer.MemSetToZero(Stream);
+            buffer2.MemSetToZero(Stream);
+            buffer3.MemSetToZero(Stream);
 
-            buffer2.CopyFrom(vectorA.Value, 0, 0, vectorA.Value.Length);
-            buffer3.CopyFrom(vectorB.Value, 0, 0, vectorB.Value.Length);
+            buffer2.CopyFrom(Stream, vectorA.Value, 0, 0, vectorA.Value.Length);
+            buffer3.CopyFrom(Stream, vectorB.Value, 0, 0, vectorB.Value.Length);
 
 
             kernelWithStream(Stream, buffer.Length, buffer.View, buffer2.View, buffer3.View, vectorA.Columns, scalar);
 
             Stream.Synchronize();
 
-            float[] Output = buffer.GetAsArray();
+            float[] Output = buffer.GetAsArray(Stream);
 
             buffer.Dispose();
             buffer2.Dispose();
@@ -581,16 +644,16 @@ namespace MachineLearningSpectralFittingCode
 
             var buffer = gpu.Allocate<float>(vector.Value.Length);
             var buffer2 = gpu.Allocate<float>(vector.Value.Length);
-            buffer.MemSetToZero();
-            buffer2.MemSetToZero();
+            buffer.MemSetToZero(Stream);
+            buffer2.MemSetToZero(Stream);
 
-            buffer2.CopyFrom(vector.Value, 0, 0, vector.Value.Length);
+            buffer2.CopyFrom(Stream, vector.Value, 0, 0, vector.Value.Length);
 
             kernelWithStream(Stream, buffer.Length, buffer.View, buffer2.View, Min, Max, Offset);
 
             Stream.Synchronize();
 
-            float[] Output = buffer.GetAsArray();
+            float[] Output = buffer.GetAsArray(Stream);
 
             buffer.Dispose();
             buffer2.Dispose();
