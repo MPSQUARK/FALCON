@@ -593,22 +593,97 @@ namespace MachineLearningSpectralFittingCode
 
             // IF mod_wavelength < 5 -> raise an error ?? Unlikely
 
+
+            bool log_wave = true;
             if ((mod_wavelength[3] - mod_wavelength[2]) - (mod_wavelength[2] - mod_wavelength[1]) < 0.000001f * (mod_wavelength[2] - mod_wavelength[1]) )
             {
-                bool log_wave = false;
-            }
-            else
-            {
-                bool log_wave = true;
+                log_wave = false;
             }
 
 
+
+            match_spectral_resolution();
             // Call match_spectral_resolution(mod_wavelength, flux, sres, mod_wavelength, new_sres, min_sig_pix=0.0,
             // log10=log_wave, new_log10=log_wave)
             // get : new_flux, matched_sres, sigma_offset, new_mask
 
             return flux;
         }
+
+        private void match_spectral_resolution()
+        {
+            // Checking if wave and sres are 2D? and making sure they are both 2D if true // firefly
+
+            // Check if 
+            //          - both wave and sres are 2D but different shapes 
+            //      OR  - wave is 1D AND sres is 2D AND wave shape in x is NOT = sres shape in y
+
+            // Check if
+            //          - wave is 2D and wave shape NOT = flux shape
+            //      OR  - wave is 1D and flux is 2D AND wave shape in x NOT = flux shape in y
+            //      OR  - wave is 1D and flux is 1D AND wave shape NOT = flux shape
+
+            // Check if
+            //          - mask in NOT NONE AND mask shape NOT = flux shape
+
+            // Check if 
+            //          - ivar in NOT NONE and ivar shape NOT = flux shape
+
+            // Check if
+            //          - sres # dimensions > flux # dimensions
+
+            // Check if 
+            //          - new_sres_wave # dimensions NOT = 1
+            //      OR  - new_sres # dimensions NOT = 1
+
+            // Check if 
+            //          - new_sres_wave shape NOT = new_sres shape
+
+
+            // Raise a warning if the new_sres vector will have to be 
+            // extrapolated for the input wavelengths
+            // Check if 
+            //          - minimum of wave < new_sres_wave[0]
+            //      OR  - maximum of wave > new_sres_wave[-1]
+            // ---> WARNS ONLY does Nothing else??
+
+            // # Initialize some variables
+            // var nspec = 1 if flux is 1D, else set equal to flux.shape[0]
+            // var nsres = 1 if flux is 1D, else set equal to sres.shape[0]
+
+            // Check if
+            //          - sres is 2D AND nspec NOT = nsres
+
+            // spec_dim = flux # dimensions
+            // sres_dim = sres # dimensions
+            // sigma_offset = new float[nspec] 
+            // new_res = spectral_resolution(new_sres_wave, new_sres, log10=new_log10)
+
+            // res = new float[nspec] ?? Object type?
+
+
+            // Get the kernel parameters necessary to match all spectra to the new resolution
+            // Check if nsres is 1 and sres_dim is 1
+            //      res[0] = spectral_resolution(wave,sres,log10=log10)
+            //      res[0].match(new_res, no_offset = no_offset, min_sig_pix = min_sig_pix)
+            //      sigma_offset[0] = res[0].sig_vo
+            //      for loop from 1 to nspec:
+            //          res[i] = res[0]
+            // ELSE
+            //      for loop (over i) from 0 to nsres:
+            //          _wave = flatten{ wave[@i,:] } if wave is 2D else set as wave
+            //          _sres = flatten{ sres[@i,:] } if sres is 2D else set as sres
+            //          res[@i] = spectral_resolution(_wave,_sres,log10=log10)
+            //          res[@i].match(new_res, no_offset=no_offset, min_sig_pix=min_sig_pix)
+            //          sigma_offset[@i] = res[@i].sig_vo
+
+            // # Force all the offsets to be the same, if requested - Line 996 - firefly_instrument.py
+
+
+        }
+
+
+
 
         private void Match_data_models()
         {
