@@ -196,7 +196,7 @@ namespace MachineLearningSpectralFittingCode
 
 
         // SCALAR OPERATIONS : Vector * Scalar, Vector / Scalar, Vector +|- Scalar
-        public static Vector ScalarOperation(Accelerator gpu, Vector vector, float scalar, char operation = '*')
+        public static Vector ScalarOperation(Accelerator gpu, Vector vector, float scalar, string operation = "*")
         {
 
             AcceleratorStream Stream = gpu.CreateStream();
@@ -213,14 +213,17 @@ namespace MachineLearningSpectralFittingCode
 
             switch (operation)
             {
-                case '*':
+                case "*":
                     kernelWithStream = gpu.LoadAutoGroupedKernel<Index1, ArrayView<float>, ArrayView<float>, float>(ScalarProductKernal);
                     break;
-                case '/':
+                case "/":
                     kernelWithStream = gpu.LoadAutoGroupedKernel<Index1, ArrayView<float>, ArrayView<float>, float>(ScalarDivideKernal);
                     break;
-                case '+':
+                case "+":
                     kernelWithStream = gpu.LoadAutoGroupedKernel<Index1, ArrayView<float>, ArrayView<float>, float>(ScalarSumKernal);
+                    break;
+                case "^*":  // flip the Vector e.g. 1/Vector then multiply by Scalar
+                    kernelWithStream = gpu.LoadAutoGroupedKernel<Index1, ArrayView<float>, ArrayView<float>, float>(ScalarProductInvVec_DKernal);
                     break;
             }
 
@@ -250,6 +253,11 @@ namespace MachineLearningSpectralFittingCode
         {
             OutPut[index] = Input[index] + Scalar;
         }
+        static void ScalarProductInvVec_DKernal(Index1 index, ArrayView<float> OutPut, ArrayView<float> Input, float Scalar)
+        {
+            OutPut[index] = Scalar / Input[index];
+        }
+
 
 
         // SCALAR OPERATIONS : Vector * Scalar, Vector / Scalar, Vector +|- Scalar
@@ -307,11 +315,7 @@ namespace MachineLearningSpectralFittingCode
         {
             OutPut[index] = Input[index] + Scalar;
         }
-
-
-
-
-
+        
 
 
         // COMPOUND SCALAR OPERATIONS : Vector * Scalar1 +|- Scaler2, Vector / Scalar1 +|- Scalar2

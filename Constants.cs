@@ -44,7 +44,7 @@ namespace MachineLearningSpectralFittingCode
         readonly public static float c = 299792458f;
         readonly public static float c_kms = 299792.458f;
         readonly public static float sig2FWHM = 2f * MathF.Sqrt(2f * MathF.Log(2));
-
+        readonly public static float c_div_sig2 = Constants.c_kms / Constants.sig2FWHM;
 
         // CONVERSION FACTORS
 

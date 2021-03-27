@@ -171,7 +171,7 @@ namespace MachineLearningSpectralFittingCode
         retryRestWave:
             try
             {
-                this.Restframe_Wavelength = Vector.ScalarOperation(gpu, this.Wavelength, (1 + this.Redshift), '/');
+                this.Restframe_Wavelength = Vector.ScalarOperation(gpu, this.Wavelength, (1 + this.Redshift), "/");
             }
             catch (Exception)
             {
@@ -560,6 +560,7 @@ namespace MachineLearningSpectralFittingCode
         private float[] DownGrade(float[] mod_wavelength, float[] flux, double[] deltal, int vdisp_round, Vector rest_wavelength, Vector r_instrument)
         {
 
+            // !!!!!! VERY SLOW
             double[] sres;
             // Can be Taken Out the Spectral_Model Class <
             if (deltal.Length == 1)
@@ -571,6 +572,8 @@ namespace MachineLearningSpectralFittingCode
                 sres = deltal;
             }
             // Can be Taken Out the Spectral_Model Class />
+            // !!!!!! VERY SLOW
+
 
             float[] new_sig = new float[mod_wavelength.Length];
 
@@ -586,6 +589,7 @@ namespace MachineLearningSpectralFittingCode
 
             }
 
+            Vector new_sres = Vector.ScalarOperation(gpu, new Vector(new_sig), Constants.c_div_sig2, "^*");
 
             // IF mod_wavelength < 5 -> raise an error ?? Unlikely
 
@@ -599,7 +603,9 @@ namespace MachineLearningSpectralFittingCode
             }
 
 
-            // Call match_spectral_resolution(mod_wavelength, flux, sres, )
+            // Call match_spectral_resolution(mod_wavelength, flux, sres, mod_wavelength, new_sres, min_sig_pix=0.0,
+            // log10=log_wave, new_log10=log_wave)
+            // get : new_flux, matched_sres, sigma_offset, new_mask
 
             return flux;
         }
