@@ -45,16 +45,20 @@ namespace MachineLearningSpectralFittingCode
         readonly public static float c_kms = 299792.458f;
         readonly public static float sig2FWHM = 2f * MathF.Sqrt(2f * MathF.Log(2));
         readonly public static float c_div_sig2 = Constants.c_kms / Constants.sig2FWHM;
+        // length of 1 sidereal year in seconds
+        readonly public static float sidereal_year = 31558175.779f;
+
 
         // CONVERSION FACTORS
 
         // Conversion Factor From Degrees to Radians
-        readonly public static float Deg2RadFactor = (float)Math.PI / 180f;
+        readonly public static float Deg2RadFactor = MathF.PI / 180f;
         // Conversion Factor From Degrees to Radians
-        readonly public static float Rad2DegFactor = 180f / (float)Math.PI;
+        readonly public static float Rad2DegFactor = 180f / MathF.PI;
         // Conversion Factor From Degrees to Radians
-        readonly public static float TwoPi = (float)Math.PI * 2f;
-
+        readonly public static float TwoPi = MathF.PI * 2f;
+        // Conversion Factor From Radians to arcseconds
+        readonly public static float rad2arcsec = 3600f * Rad2DegFactor;
 
 
         // OBSERVATIONAL ASTRONOMY PARAMETERS
@@ -108,6 +112,7 @@ namespace MachineLearningSpectralFittingCode
         //
         public static float slope { get; set; } = 0f;
         public static int sidx { get; set; } = 0;
+        public static double[] sres { get; set; }
 
     }
 }

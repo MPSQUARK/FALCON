@@ -20,7 +20,9 @@ namespace MachineLearningSpectralFittingCode
             // Get Hardware Data
             //GetHardware();
             // Get Model Data 
-            GetModelData();
+            
+            
+            //GetModelData();
         }
 
         // CONFIG OF HARDWARE   
@@ -131,8 +133,6 @@ namespace MachineLearningSpectralFittingCode
         // CONFIG OF PHYSICS
         #region
 
-        // Cosmology Model Set
-        public static Cosmology cosmology { get; private set; } = new Cosmology();
 
 
         // Redshift Value
@@ -160,7 +160,7 @@ namespace MachineLearningSpectralFittingCode
          * e.g. 0b00010_010 => MaStar - E
          * e.g. 0b00000_100 => **NO ENTRY** 
         */
-        public byte Model_Key { get; private set; } = 0b00010_010;
+        public byte Model_Key = 0b00010_010;
 
         // Choose IMF : DEFAULT 0 : Kroupa, 1 : Salpeter
         public byte IMF { get; private set; } = 0;
@@ -190,7 +190,7 @@ namespace MachineLearningSpectralFittingCode
 
 
         // CONFIG PRE-INITIALISE DATA
-        public void GetModelData()
+        public void GetModelData(Accelerator gpu)
         {
             // run this function upon Config Application - Pre-Initialisation Phase
 
@@ -254,9 +254,55 @@ namespace MachineLearningSpectralFittingCode
                 {
                     throw new Exception("MaStar SSP Data not found");
                 }
+
+                PreInitialiseDownGrade(gpu);
+                return;
             }
-            
+
+
+            if (this.Model_Key % 2 != 0)
+            {
+                
+                switch (Program.config.Model_Key)
+                {
+                    case 0b00001_001:
+                        Constants.r_model = new double[1] { 2.55d };
+                        break;
+                    case 0b00010_001:
+                        Constants.r_model = new double[1] { 3.40d };
+                        break;
+                    case 0b00100_001:
+                        Constants.r_model = new double[1] { 0.55d };
+                        break;
+                    case 0b01000_001:
+                        Constants.r_model = new double[1] { 0.10d };
+                        break;
+                }
+
+
+                PreInitialiseDownGrade(gpu);
+                return;
+            }
         }
+
+        /// <summary>
+        /// Computes the Data Invariant section of DownGrade Function Outputting sres
+        /// </summary>
+        public void PreInitialiseDownGrade(Accelerator gpu)
+        {
+
+            if (Constants.r_model.Length == 1)
+            {
+                Constants.sres = Vector.ScalarOperation_D(gpu, new Vector(Constants.wavelength), (1d / Constants.r_model[0]), '*');
+                return;
+            }
+
+            Constants.sres = Constants.r_model;
+            return;
+
+        }
+
+
 
     }
 }

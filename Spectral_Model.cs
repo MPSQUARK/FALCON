@@ -69,7 +69,6 @@ namespace MachineLearningSpectralFittingCode
         #region
         int velocity_dispersion_r { get; set; }
         int fit_per_iteration_cap { get; set; }
-        double[] delta_lambda { get; set; }
         // Model Main Values
         /// <summary>
         /// MODEL wavelengths
@@ -237,33 +236,6 @@ namespace MachineLearningSpectralFittingCode
         // Model Initialisation
         private void InitialiseSPModel()
         {
-            
-            switch (Program.config.Model_Key)
-            {
-                case 0b00001_001:
-                    this.delta_lambda = new double[1] { 2.55d };
-                    break;
-                case 0b00010_001:
-                    this.delta_lambda = new double[1] { 3.40d };
-                    break;
-                case 0b00100_001:
-                    this.delta_lambda = new double[1] { 0.55d };
-                    break;
-                case 0b01000_001:
-                    this.delta_lambda = new double[1] { 0.10d };
-                    break;
-
-
-                case 0b00001_010:
-                    this.delta_lambda = Constants.r_model;
-                    break;
-                case 0b00010_010:
-                    this.delta_lambda = Constants.r_model;
-                    break;
-
-                default:
-                    throw new Exception("Incorrect Model key");
-            }
             this.velocity_dispersion_r = (int)(MathF.Round(this.Velocity_Dispersion / 5f) * 5f);
         }
 
@@ -428,6 +400,8 @@ namespace MachineLearningSpectralFittingCode
                 // Gets Indexes of Models matching wavlengths
                 this.TrimModel();
 
+                Vector new_sres = this.DownGradeModelInvar(this.Model_wavelength, this.velocity_dispersion_r, this.Instrument_Resolution);
+
                 List<float> model_flux = new List<float>();
                 List<float> age_model = new List<float>();
                 List<float> metal_model = new List<float>();
@@ -465,7 +439,7 @@ namespace MachineLearningSpectralFittingCode
                         // downgrades the model
                         if (Program.config.Downgrade_models)
                         {
-                            flux = this.DownGrade(Constants.wavelength, flux, this.delta_lambda, this.velocity_dispersion_r,this.Restframe_Wavelength, this.Instrument_Resolution);
+                            flux = this.DownGrade(this.Model_wavelength, flux, this.velocity_dispersion_r,this.Restframe_Wavelength, this.Instrument_Resolution, new_sres);
                         }
                         
 
@@ -557,42 +531,29 @@ namespace MachineLearningSpectralFittingCode
             return;
         }
 
-        private float[] DownGrade(float[] mod_wavelength, float[] flux, double[] deltal, int vdisp_round, Vector rest_wavelength, Vector r_instrument)
+        private Vector DownGradeModelInvar(float[] mod_wavelength, int vdisp_round, Vector r_instrument)
         {
-
-            // !!!!!! VERY SLOW
-            double[] sres;
-            // Can be Taken Out the Spectral_Model Class <
-            if (deltal.Length == 1)
-            {
-                 sres = Vector.ScalarOperation_D(gpu, new Vector(mod_wavelength), (1d / deltal[0]), '*');
-            }
-            else
-            {
-                sres = deltal;
-            }
-            // Can be Taken Out the Spectral_Model Class />
-            // !!!!!! VERY SLOW
-
-
             float[] new_sig = new float[mod_wavelength.Length];
 
-            for (int i = 0, j=0; i < mod_wavelength.Length; i++)
+            for (int i = 0, j = 0; i < mod_wavelength.Length; i++)
             {
                 if (this.MatchingWavelengthMapping[..^1].Contains(i))
                 {
                     j++;
                 }
-                
+
                 float sig_instrument = Constants.c_kms / (r_instrument.Value[j] * Constants.sig2FWHM);
                 new_sig[i] = MathF.Sqrt(MathF.Pow(vdisp_round, 2f) + MathF.Pow(sig_instrument, 2f));
 
             }
 
-            Vector new_sres = Vector.ScalarOperation(gpu, new Vector(new_sig), Constants.c_div_sig2, "^*");
+            return Vector.ScalarOperation(gpu, new Vector(new_sig), Constants.c_div_sig2, "^*");  // new_sres
+        }
+
+        private float[] DownGrade(float[] mod_wavelength, float[] flux, int vdisp_round, Vector rest_wavelength, Vector r_instrument, Vector new_sres)
+        {
 
             // IF mod_wavelength < 5 -> raise an error ?? Unlikely
-
 
             bool log_wave = true;
             if ((mod_wavelength[3] - mod_wavelength[2]) - (mod_wavelength[2] - mod_wavelength[1]) < 0.000001f * (mod_wavelength[2] - mod_wavelength[1]) )
@@ -601,8 +562,7 @@ namespace MachineLearningSpectralFittingCode
             }
 
 
-
-            match_spectral_resolution();
+            match_spectral_resolution(mod_wavelength, flux, Constants.sres, mod_wavelength, new_sres, log10:log_wave, new_log10:log_wave);
             // Call match_spectral_resolution(mod_wavelength, flux, sres, mod_wavelength, new_sres, min_sig_pix=0.0,
             // log10=log_wave, new_log10=log_wave)
             // get : new_flux, matched_sres, sigma_offset, new_mask
@@ -610,34 +570,44 @@ namespace MachineLearningSpectralFittingCode
             return flux;
         }
 
-        private void match_spectral_resolution()
+        private void match_spectral_resolution(float[] wave, float[] flux, double[] sres, float[] new_sres_wave, Vector new_sres, float min_sig_pix=0f, bool no_offset=true,
+            bool variable_offset = false, bool log10 = false, bool new_log10 = false) // float[flux.length] ivar and float[flux.length] mask = None 
         {
+
             // Checking if wave and sres are 2D? and making sure they are both 2D if true // firefly
+            // + Both are 1D
 
             // Check if 
             //          - both wave and sres are 2D but different shapes 
             //      OR  - wave is 1D AND sres is 2D AND wave shape in x is NOT = sres shape in y
+            // + Both are 1D
 
             // Check if
             //          - wave is 2D and wave shape NOT = flux shape
             //      OR  - wave is 1D and flux is 2D AND wave shape in x NOT = flux shape in y
             //      OR  - wave is 1D and flux is 1D AND wave shape NOT = flux shape
+            // + wave and flux the same shape
 
             // Check if
             //          - mask in NOT NONE AND mask shape NOT = flux shape
+            // + mask is NONE
 
             // Check if 
             //          - ivar in NOT NONE and ivar shape NOT = flux shape
+            // + ivar is NONE
 
             // Check if
             //          - sres # dimensions > flux # dimensions
+            // + sres # dims = flux # dims
 
             // Check if 
             //          - new_sres_wave # dimensions NOT = 1
             //      OR  - new_sres # dimensions NOT = 1
+            // + new_sres_wave and new_sres are both 1D
 
             // Check if 
             //          - new_sres_wave shape NOT = new_sres shape
+            // + new_sres_wave is same shape as new_sres
 
 
             // Raise a warning if the new_sres vector will have to be 
@@ -646,20 +616,30 @@ namespace MachineLearningSpectralFittingCode
             //          - minimum of wave < new_sres_wave[0]
             //      OR  - maximum of wave > new_sres_wave[-1]
             // ---> WARNS ONLY does Nothing else??
+            if (wave.Min() < new_sres_wave[0] || wave.Max() > new_sres_wave[^1])
+            {
+                Console.WriteLine("WARNING : Mapping to the new spectral resolution will require extrapolating the provided input vectors!");
+            }
+
 
             // # Initialize some variables
             // var nspec = 1 if flux is 1D, else set equal to flux.shape[0]
             // var nsres = 1 if flux is 1D, else set equal to sres.shape[0]
+            var dims = 1;
+
 
             // Check if
             //          - sres is 2D AND nspec NOT = nsres
+            // + sres is 1D and nspec = nsres
+
 
             // spec_dim = flux # dimensions
             // sres_dim = sres # dimensions
             // sigma_offset = new float[nspec] 
+            float sigma_offset;
             // new_res = spectral_resolution(new_sres_wave, new_sres, log10=new_log10)
 
-            // res = new float[nspec] ?? Object type?
+            // res = new float[nspec] ?? Object type? ==> new object[1]
 
 
             // Get the kernel parameters necessary to match all spectra to the new resolution

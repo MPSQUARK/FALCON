@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using HDF5CSharp;
 using System.Linq;
 
+
 namespace MachineLearningSpectralFittingCode
 {
     class Program
@@ -23,7 +24,18 @@ namespace MachineLearningSpectralFittingCode
             context.EnableAlgorithms();
             Accelerator gpu;
 
+            config = new Config();
+            gpu = config.GetHardware(context);
+            
+            cosmology = new Cosmology();
+            cosmology.Initialise();
+
+            //UI UserInterface = new UI(config);
+            config.GetModelData(gpu);
+
             string Data_path = PathOfProgram + @"\Data\spec-0266-51602-0001.dat";
+
+
 
             // Timer
             var watch = System.Diagnostics.Stopwatch.StartNew();
@@ -31,16 +43,15 @@ namespace MachineLearningSpectralFittingCode
             /* PRE-INITIALISATION
             */
             File.WriteAllText($"{PathOfProgram}Log.txt", $"{System.DateTime.Now} : Starting Pre-Initialisation\n");
-            
+
             // Set Configs
-            config = new Config();
-            gpu = config.GetHardware(context);
+
+
             //config.RecordSystemInfo();
 
             // Set Cosmology
-            cosmology = new Cosmology();
-            cosmology.Initialise();
-            
+
+
 
 
 
@@ -64,8 +75,10 @@ namespace MachineLearningSpectralFittingCode
             for (int j = 0; j < chis.Length; j++)
             {
                 chis[j] = spectral_Model.CalculateChiSqu(j);
+                Console.WriteLine(chis[j] / spectral_Model.Flux.Value.Length);
             }
 
+            Console.WriteLine($"best model is {Array.IndexOf(chis, chis.Min())}");
 
 
 
@@ -163,10 +176,10 @@ namespace MachineLearningSpectralFittingCode
             // RUN PYTHON FOR VISUALS
 
             // PROGRAM END
-            Console.WriteLine("End");
-            File.AppendAllText($"{PathOfProgram}Log.txt", $"{System.DateTime.Now} : Program Terminated \n");
+            //Console.WriteLine("End");
+            //File.AppendAllText($"{PathOfProgram}Log.txt", $"{System.DateTime.Now} : Program Terminated \n");
 
-            Console.ReadLine();
+            //Console.ReadLine();
 
         }
 

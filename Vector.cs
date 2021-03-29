@@ -602,6 +602,101 @@ namespace MachineLearningSpectralFittingCode
         }
 
 
+        public static Vector Diff(Accelerator gpu, Vector vectorA)
+        {
+            AcceleratorStream stream = gpu.CreateStream();
+
+            var kernelWithStream = gpu.LoadAutoGroupedKernel<Index1, ArrayView<float>, ArrayView<float>>(DiffKernel);
+
+            MemoryBuffer<float> buffer = gpu.Allocate<float>(vectorA.Value.Length - 1); // Output
+            MemoryBuffer<float> buffer2 = gpu.Allocate<float>(vectorA.Value.Length   ); //  Input
+
+            buffer.MemSetToZero(stream);
+            buffer2.MemSetToZero(stream);
+
+            buffer2.CopyFrom(stream, vectorA.Value, 0, 0, vectorA.Value.Length);
+
+            kernelWithStream(stream, buffer.Length, buffer.View, buffer2.View);
+
+            stream.Synchronize();
+
+            float[] Output = buffer.GetAsArray(stream);
+
+            buffer.Dispose();
+            buffer2.Dispose();
+
+            stream.Dispose();
+
+            return new Vector(Output);
+        }
+        static void DiffKernel(Index1 index, ArrayView<float> Output, ArrayView<float> Input)
+        {
+            Output[index] = Input[index + 1] - Input[index];
+        }
+
+        public static Vector Diff_LogMult(Accelerator gpu, Vector vectorA, float scalar)
+        {
+            AcceleratorStream stream = gpu.CreateStream();
+
+            var kernelWithStream = gpu.LoadAutoGroupedKernel<Index1, ArrayView<float>, ArrayView<float>, float>(DiffLogMultKernel);
+
+            MemoryBuffer<float> buffer = gpu.Allocate<float>(vectorA.Value.Length - 1); // Output
+            MemoryBuffer<float> buffer2 = gpu.Allocate<float>(vectorA.Value.Length); //  Input
+
+            buffer.MemSetToZero(stream);
+            buffer2.MemSetToZero(stream);
+
+            buffer2.CopyFrom(stream, vectorA.Value, 0, 0, vectorA.Value.Length);
+
+            kernelWithStream(stream, buffer.Length, buffer.View, buffer2.View, scalar);
+
+            stream.Synchronize();
+
+            float[] Output = buffer.GetAsArray(stream);
+
+            buffer.Dispose();
+            buffer2.Dispose();
+
+            stream.Dispose();
+
+            return new Vector(Output);
+        }
+        static void DiffLogMultKernel(Index1 index, ArrayView<float> Output, ArrayView<float> Input, float scalar)
+        {
+            Output[index] = (XMath.Log(Input[index + 1] - Input[index], XMath.E)) * scalar;
+        }
+
+        public static Vector Diff_Log(Accelerator gpu, Vector vectorA)
+        {
+            AcceleratorStream stream = gpu.CreateStream();
+
+            var kernelWithStream = gpu.LoadAutoGroupedKernel<Index1, ArrayView<float>, ArrayView<float>>(DiffLogKernel);
+
+            MemoryBuffer<float> buffer = gpu.Allocate<float>(vectorA.Value.Length - 1); // Output
+            MemoryBuffer<float> buffer2 = gpu.Allocate<float>(vectorA.Value.Length); //  Input
+
+            buffer.MemSetToZero(stream);
+            buffer2.MemSetToZero(stream);
+
+            buffer2.CopyFrom(stream, vectorA.Value, 0, 0, vectorA.Value.Length);
+
+            kernelWithStream(stream, buffer.Length, buffer.View, buffer2.View);
+
+            stream.Synchronize();
+
+            float[] Output = buffer.GetAsArray(stream);
+
+            buffer.Dispose();
+            buffer2.Dispose();
+
+            stream.Dispose();
+
+            return new Vector(Output);
+        }
+        static void DiffLogKernel(Index1 index, ArrayView<float> Output, ArrayView<float> Input)
+        {
+            Output[index] = XMath.Log(Input[index + 1] - Input[index], XMath.E);
+        }
 
 
         // DOT PRODUCT : Vector dot Scalar, Vector dot Vector
