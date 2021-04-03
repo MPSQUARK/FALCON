@@ -343,3 +343,4 @@ healthchecksdb
 /modeldata.h5
 /modelOutput.h5
 /StellarPopulationModels/MaStar_SSP.h5
+/DustMaps/dust.h5

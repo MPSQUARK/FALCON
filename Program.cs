@@ -75,7 +75,7 @@ namespace MachineLearningSpectralFittingCode
             for (int j = 0; j < chis.Length; j++)
             {
                 chis[j] = spectral_Model.CalculateChiSqu(j);
-                Console.WriteLine(chis[j] / spectral_Model.Flux.Value.Length);
+                //Console.WriteLine(chis[j] / spectral_Model.Flux.Value.Length);
             }
 
             Console.WriteLine($"best model is {Array.IndexOf(chis, chis.Min())}");

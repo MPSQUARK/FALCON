@@ -323,7 +323,83 @@ namespace MachineLearningSpectralFittingCode
 
         private float Get_SFD_dust(float logitude, float latitude, string dustmap = "ebv", bool interpolate = true)
         {
+            Console.WriteLine($"longitude {logitude} , latitude {latitude}");
+
             // get path to dust map
+
+            // if var dustmap is NOT a string 
+            //      - Raise Exception
+            //  + ALWAYS WILL BE A STRING
+
+            // var dml = dustmap in lowercase
+
+            /* if dustmap is 'ebv' 'eb-b' or 'e(b-v)'
+             *  + ONLY accepted variation will be 'ebv'
+             * 
+             *      - read in file at os.environ['FF_DIR']+'/data/SFD_dust_4096_%s.fits'
+             * + TEST WHERE THIS IS TO CONVERT TO HDF5
+             * 
+             * + RETURN ALL OTHER TYPES AS DUSTMAP NOT FOUND
+             * 
+             * if dustmap = i100
+             * if dustmap = x
+             * if dustmap = t
+             * if dustmap = mask
+             * else dustmapfn = dustmap ?? would that not crash?
+             * 
+             * if longitude is a scalar
+             *      - l = convert longitude to an array and multipy by pi/180
+             * + WHICH it IS
+             * if latitude is a scalar
+             *      - b = convert latitude to an array and multipy by pi/180
+             *      
+             * if length of l and b DONT match, RAISE EXCEPTION
+             *  + WILL ALWAYS MATCH SINCE l and b are floats
+             * 
+             * if NOT dustmapfn.contains(%s)
+             *  + %s WILL ALWAYS be in the path name
+             *      - f = fits.open(dustmapfn)
+             *      - try : mapds = [f[0].data] then f.close()
+             * + READ IN DUSTMAP in python and convert to HDF5 for this and read in PreInitialise Phase
+             * 
+             *      - assert that mapds[-1].shape[0] is = to mapds[-1].shape[1] 
+             * + Test in Python what does means
+             * 
+             *      - polename = dustmapfn.split('.')[0].split('_')[-1].lower() ?? Can do a Contains or Regex test instead??
+             * 
+             *      - if polename is 'ngp'
+             *          -> n=[1]
+             *      - if sum( b > 0 ) > 0
+             *          -> b = b
+             *      - if polename is 'sgp'
+             *          -> n = [-1]
+             *          - if sum ( b < 0 ) > 0:
+             *              -> b = b
+             *      - else
+             *          - RAISE EXCEPTION
+             *      
+             *      -> masks = [ones(same shape as b) converted to boolean ]
+             * ELSE
+             *      -> nmask = b >= 0 
+             *      -> smask = !nmask
+             *      
+             *      masks = [nmask, smask]
+             *      ns = [1,-1]
+             *      
+             *      mapds = []
+             *     =>-> READ IN THE dustmapfn fits for 'ngp'/'sgp'
+             *      try: mapds.add(f[0].data) then close(f)
+             *      asstert that mapds[-1].shape[0] is EQUAL to mapds[-1].shape[1]
+             *     <=->repeat for 'sgp'
+             *      
+             *      retvals = []
+             *      for n,mapd,m in zip(ns,mapds,masks) 
+             *          + CHECK THIS FUNCTIONALITY IN PYTHON TO REPLICATE
+             *          npix = mapd.shape[0]
+             *      
+             *      
+             *      
+            */
 
 
 
