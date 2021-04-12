@@ -36,6 +36,35 @@ namespace MachineLearningSpectralFittingCode
             string Data_path = PathOfProgram + @"\Data\spec-0266-51602-0001.dat";
 
 
+            //float[] ex = { -5, -3, -2, -1, 0, 1, 2, 3, 5};
+            //float[] ey = { 0.036882f, -0.01411f, -0.18186f, -0.42074f, 0f, 0.420735f, 0.181859f, 0.014112f, -0.03688f };
+            //float[] p = { -5f, -4.5f, -4f, -3.5f, -3.2f, -3f, -2.8f, -2.1f, -1.5f, -1f, -0.8f, 0f, 0.65f, 1f, 1.3f, 1.9f, 2.6f, 3.1f, 3.5f, 4f, 4.5f, 5f };
+            //CubicSplineInterpolation spline = new CubicSplineInterpolation(ex,ey);
+           
+            //foreach (float pp in p)
+            //{
+            //    Console.WriteLine(spline.Interpolate(pp).ToString());
+            //}
+            //Console.ReadLine();
+
+            float[] x = { 0, 1, 3, 4, 5, 6, 7, 8, 9 };
+            float[] y = { 3, 4, -2, 4, 1, 7, 2, 0, 3 };
+
+            List<float> pts = new List<float>();
+            for (float i = 0; i < 9.1; i+=0.1f)
+            {
+                pts.Add(i);
+            }
+
+            CubicSplineInterpolation spline1 = new CubicSplineInterpolation(x, y);
+            foreach (float pp in pts)
+            {
+                Console.WriteLine(spline1.Interpolate(pp).ToString());
+            }
+            Console.ReadLine();
+
+
+
             // Timer
             var watch = System.Diagnostics.Stopwatch.StartNew();
 
@@ -49,6 +78,9 @@ namespace MachineLearningSpectralFittingCode
             //config.RecordSystemInfo();
 
             // Set Cosmology
+
+
+
 
 
 
