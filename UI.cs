@@ -12,7 +12,7 @@ namespace MachineLearningSpectralFittingCode
             RunUI(config);
         }
 
-        private void RunUI(Config config)
+        public void RunUI(Config config)
         {
             bool running = true;
             Console.WriteLine("\tUserInterface 1.0 : ");

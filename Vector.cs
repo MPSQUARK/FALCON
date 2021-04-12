@@ -35,33 +35,25 @@ namespace MachineLearningSpectralFittingCode
 
 
         // Creates a Uniform Vector where all values are = Value
-        public static Vector Fill(Accelerator gpu, float Value, int Size, int Columns = 1)
+        public static Vector Fill(float Value, int Size, int Columns = 1)
         {
-
-            AcceleratorStream Stream = gpu.CreateStream();
-
-            var kernelWithStream = gpu.LoadAutoGroupedKernel<Index1, ArrayView<float>, float>(FillKernel);
-
-            var buffer = gpu.Allocate<float>(Size); // Output
-            buffer.MemSetToZero(Stream);
-
-            kernelWithStream(Stream, buffer.Length, buffer.View, Value);
-
-            Stream.Synchronize();
-
-            float[] Output = buffer.GetAsArray(Stream);
-
-            buffer.Dispose();
-
-            Stream.Dispose();
-
-            return new Vector(Output, Columns);
+            return new Vector(Enumerable.Repeat(Value, Size).ToArray(), Columns);
+            //AcceleratorStream Stream = gpu.CreateStream();
+            //var kernelWithStream = gpu.LoadAutoGroupedKernel<Index1, ArrayView<float>, float>(FillKernel);
+            //var buffer = gpu.Allocate<float>(Size); // Output
+            //buffer.MemSetToZero(Stream);
+            //kernelWithStream(Stream, buffer.Length, buffer.View, Value);
+            //Stream.Synchronize();
+            //float[] Output = buffer.GetAsArray(Stream);
+            //buffer.Dispose();
+            //Stream.Dispose();
+            //return new Vector(Output, Columns);
         }
         // KERNEL
-        static void FillKernel(Index1 index, ArrayView<float> OutPut, float Value)
-        {
-            OutPut[index] = Value;
-        }
+        //static void FillKernel(Index1 index, ArrayView<float> OutPut, float Value)
+        //{
+        //    OutPut[index] = Value;
+        //}
 
 
 

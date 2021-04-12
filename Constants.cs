@@ -114,5 +114,9 @@ namespace MachineLearningSpectralFittingCode
         public static int sidx { get; set; } = 0;
         public static double[] sres { get; set; }
 
+        // Dust Maps
+        public static float[,] ngp_dust { get; set; }
+        public static float[,] sgp_dust { get; set; }
+
     }
 }

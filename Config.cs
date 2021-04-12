@@ -18,11 +18,7 @@ namespace MachineLearningSpectralFittingCode
         public Config()
         {
             // Get Hardware Data
-            //GetHardware();
-            // Get Model Data 
-            
-            
-            //GetModelData();
+            // GetHardware();
         }
 
         // CONFIG OF HARDWARE   
@@ -189,8 +185,17 @@ namespace MachineLearningSpectralFittingCode
         // CONFIG OF AI
 
 
+
+        // SETUP
+        public void Setup(Accelerator gpu)
+        {
+            GetModelData();
+            GetDustData();
+            PreInitialiseDownGrade(gpu);
+        }
+
         // CONFIG PRE-INITIALISE DATA
-        public void GetModelData(Accelerator gpu)
+        private void GetModelData()
         {
             // run this function upon Config Application - Pre-Initialisation Phase
 
@@ -255,7 +260,6 @@ namespace MachineLearningSpectralFittingCode
                     throw new Exception("MaStar SSP Data not found");
                 }
 
-                PreInitialiseDownGrade(gpu);
                 return;
             }
 
@@ -279,8 +283,6 @@ namespace MachineLearningSpectralFittingCode
                         break;
                 }
 
-
-                PreInitialiseDownGrade(gpu);
                 return;
             }
         }
@@ -288,7 +290,7 @@ namespace MachineLearningSpectralFittingCode
         /// <summary>
         /// Computes the Data Invariant section of DownGrade Function Outputting sres
         /// </summary>
-        public void PreInitialiseDownGrade(Accelerator gpu)
+        private void PreInitialiseDownGrade(Accelerator gpu)
         {
 
             if (Constants.r_model.Length == 1)
@@ -302,7 +304,17 @@ namespace MachineLearningSpectralFittingCode
 
         }
 
+        private void GetDustData()
+        {
+            // Read in Hdf5 Data File/s
+            string fileName = Program.PathOfProgram + @"DustMaps/dust.h5";
+            long id = Hdf5.OpenFile(fileName, true);
 
+            // Read Data
+            Constants.ngp_dust = (float[,])((Hdf5.ReadDatasetToArray<float>(id, "ngp")).result);
+            Constants.sgp_dust = (float[,])((Hdf5.ReadDatasetToArray<float>(id, "sgp")).result);
+            return;
+        }
 
     }
 }

@@ -31,10 +31,9 @@ namespace MachineLearningSpectralFittingCode
             cosmology.Initialise();
 
             //UI UserInterface = new UI(config);
-            config.GetModelData(gpu);
+            config.Setup(gpu);
 
             string Data_path = PathOfProgram + @"\Data\spec-0266-51602-0001.dat";
-
 
 
             // Timer
@@ -78,7 +77,7 @@ namespace MachineLearningSpectralFittingCode
                 //Console.WriteLine(chis[j] / spectral_Model.Flux.Value.Length);
             }
 
-            Console.WriteLine($"best model is {Array.IndexOf(chis, chis.Min())}");
+            //Console.WriteLine($"best model is {Array.IndexOf(chis, chis.Min())}");
 
 
 

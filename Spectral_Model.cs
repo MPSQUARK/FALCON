@@ -147,7 +147,7 @@ namespace MachineLearningSpectralFittingCode
         retryInstru:
             try
             {
-                this.Instrument_Resolution = Vector.Fill(gpu, instrument_resolution, this.Wavelength.Value.Length);
+                this.Instrument_Resolution = Vector.Fill(instrument_resolution, this.Wavelength.Value.Length);
             }
             catch (Exception)
             {
@@ -323,7 +323,7 @@ namespace MachineLearningSpectralFittingCode
 
         private float Get_SFD_dust(float logitude, float latitude, string dustmap = "ebv", bool interpolate = true)
         {
-            Console.WriteLine($"longitude {logitude} , latitude {latitude}");
+            //Console.WriteLine($"longitude {logitude} , latitude {latitude}");
 
             // get path to dust map
 

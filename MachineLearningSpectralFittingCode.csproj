@@ -17,7 +17,7 @@
 
   <ItemGroup>
     <PackageReference Include="CSharpFITS" Version="1.1.0" />
-    <PackageReference Include="HDF5-CSharp" Version="1.12.0" />
+    <PackageReference Include="HDF5-CSharp" Version="1.12.3" />
     <PackageReference Include="ILGPU" Version="0.10.0" />
     <PackageReference Include="ILGPU.Algorithms" Version="0.10.0-beta1" />
     <PackageReference Include="System.Management" Version="5.0.0" />
