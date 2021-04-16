@@ -112,7 +112,7 @@ namespace MachineLearningSpectralFittingCode
         //
         public static float slope { get; set; } = 0f;
         public static int sidx { get; set; } = 0;
-        public static double[] sres { get; set; }
+        public static float[] sres { get; set; }
 
         // Dust Maps
         public static float[,] ngp_dust { get; set; }

@@ -646,10 +646,11 @@ namespace MachineLearningSpectralFittingCode
             return flux;
         }
 
-        private void match_spectral_resolution(float[] wave, float[] flux, double[] sres, float[] new_sres_wave, Vector new_sres, float min_sig_pix=0f, bool no_offset=true,
+        private void match_spectral_resolution(float[] wave, float[] flux, float[] sres, float[] new_sres_wave, Vector new_sres, float min_sig_pix=0f, bool no_offset=true,
             bool variable_offset = false, bool log10 = false, bool new_log10 = false) // float[flux.length] ivar and float[flux.length] mask = None 
         {
-
+            #region
+            /*
             // Checking if wave and sres are 2D? and making sure they are both 2D if true // firefly
             // + Both are 1D
 
@@ -684,7 +685,7 @@ namespace MachineLearningSpectralFittingCode
             // Check if 
             //          - new_sres_wave shape NOT = new_sres shape
             // + new_sres_wave is same shape as new_sres
-
+            */
 
             // Raise a warning if the new_sres vector will have to be 
             // extrapolated for the input wavelengths
@@ -692,6 +693,7 @@ namespace MachineLearningSpectralFittingCode
             //          - minimum of wave < new_sres_wave[0]
             //      OR  - maximum of wave > new_sres_wave[-1]
             // ---> WARNS ONLY does Nothing else??
+            #endregion
             if (wave.Min() < new_sres_wave[0] || wave.Max() > new_sres_wave[^1])
             {
                 Console.WriteLine("WARNING : Mapping to the new spectral resolution will require extrapolating the provided input vectors!");
@@ -712,11 +714,18 @@ namespace MachineLearningSpectralFittingCode
             // spec_dim = flux # dimensions
             // sres_dim = sres # dimensions
             // sigma_offset = new float[nspec] 
-            float sigma_offset;
-            // new_res = spectral_resolution(new_sres_wave, new_sres, log10=new_log10)
+            
+            // 0.2s
+            Spectral_resolution new_res = new Spectral_resolution(gpu, new_sres_wave, new_sres.Value, log10 = new_log10);
 
             // res = new float[nspec] ?? Object type? ==> new object[1]
 
+            // 0.2s
+            Spectral_resolution res = new Spectral_resolution(gpu, wave, sres, log10);
+            // 18-20s
+            res.match(new_res, no_offset, min_sig_pix);
+            float sigma_offset = res.sig_vo;
+            //Console.WriteLine($"the sig vo is : {sigma_offset}");
 
             // Get the kernel parameters necessary to match all spectra to the new resolution
             // Check if nsres is 1 and sres_dim is 1
@@ -734,11 +743,86 @@ namespace MachineLearningSpectralFittingCode
             //          sigma_offset[@i] = res[@i].sig_vo
 
             // # Force all the offsets to be the same, if requested - Line 996 - firefly_instrument.py
+            //if (!no_offset && !variable_offset)
+            //{
+            //    // Assuming only 1 value for sigma offset
+            //    // thus common_offset = sigma_offset
+            //    // thus offset_diff = 0f
+            //    // thus Method res.offset_GaussianKernelDifference(0) returns None
+            //}
+
+            // FLUX DEPENDENT SECTION
+            float[] out_flux = flux;
+            // out_ivar = None if ivar is None else np.ma.MaskedArray(ivar.copy())
+            // noise = None if ivar is None else np.ma.sqrt(1.0/out_ivar)
+            float[] out_sres = sres;
+            // mask = None
+            bool[] mask = Enumerable.Repeat<bool>(false, flux.Length).ToArray();
+            bool[] out_mask = mask;
+
+            // Assume nspec == 1 and spec_dim == 1 === dim == 1    #01
+            int[] indx = (from sigpd in res.sig_pd
+                          where sigpd > min_sig_pix
+                          select Array.IndexOf(res.sig_pd, sigpd)).ToArray();
+            // ivar is None                                         #02
+
+            int len = indx.Length;
+            if (len > 0)
+            {
+                float[] selectedflux = new float[len];
+                float[] selectedsig = new float[len];
+                for (int i = 0; i < len; i++)
+                {
+                    selectedflux[i] = flux[indx[i]];
+                    selectedsig[i] = res.sig_pd[indx[i]];
+                }
+                float[] selected_outflux = convolution_variable_sigma(selectedflux, selectedsig);
+                for (int i = 0; i < len; i++)
+                {
+                    out_flux[indx[i]] = selected_outflux[i]; 
+                }
+            }
+            else
+            {
+                out_flux = convolution_variable_sigma(flux, res.sig_pd);
+            }
+
+            // thus ignor else                                      #02
+
+            float[] adjusted = res.adjusted_resolution(indx);
+            if (len > 0f)
+            {
+                for (int i = 0; i < indx.Length; i++)
+                {
+                    out_sres[indx[i]] = adjusted[i];
+                }
+            }
+            else
+            {
+                out_sres = adjusted;
+            }
+
+            if (res.sig_mask.Contains(true) || mask.Contains(true))
+            {
+                for (int i = 0; i < mask.Length; i++)
+                {
+                    out_mask[i] = res.sig_mask[i] || mask[i];
+                }
+            }
+            else
+            {
+                out_mask = mask;
+            }
+            //thus ignore else                                       #01
 
 
         }
 
+        private float[] convolution_variable_sigma(float[] y, float[] sigma) //ye= None, integral= False) 
+        {
 
+            return new float[0];
+        }
 
 
         private void Match_data_models()

@@ -38,23 +38,7 @@ namespace MachineLearningSpectralFittingCode
         public static Vector Fill(float Value, int Size, int Columns = 1)
         {
             return new Vector(Enumerable.Repeat(Value, Size).ToArray(), Columns);
-            //AcceleratorStream Stream = gpu.CreateStream();
-            //var kernelWithStream = gpu.LoadAutoGroupedKernel<Index1, ArrayView<float>, float>(FillKernel);
-            //var buffer = gpu.Allocate<float>(Size); // Output
-            //buffer.MemSetToZero(Stream);
-            //kernelWithStream(Stream, buffer.Length, buffer.View, Value);
-            //Stream.Synchronize();
-            //float[] Output = buffer.GetAsArray(Stream);
-            //buffer.Dispose();
-            //Stream.Dispose();
-            //return new Vector(Output, Columns);
         }
-        // KERNEL
-        //static void FillKernel(Index1 index, ArrayView<float> OutPut, float Value)
-        //{
-        //    OutPut[index] = Value;
-        //}
-
 
 
         // Access 1 Value from 2D Vector
@@ -117,7 +101,6 @@ namespace MachineLearningSpectralFittingCode
 
             return new Vector(Output);
         }
-#pragma warning disable CS1998 // Async method lacks 'await' operators and will run synchronously
         public static async Task<Vector> AccessSliceAsync(Accelerator gpu, Vector vector, int row_col_index, char row_col)
 #pragma warning restore CS1998 // Async method lacks 'await' operators and will run synchronously
         {            
@@ -253,7 +236,7 @@ namespace MachineLearningSpectralFittingCode
 
 
         // SCALAR OPERATIONS : Vector * Scalar, Vector / Scalar, Vector +|- Scalar
-        public static double[] ScalarOperation_D(Accelerator gpu, Vector vector, double scalar, char operation = '*')
+        public static double[] ScalarOperation(Accelerator gpu, Vector vector, double scalar, char operation = '*')
         {
 
             AcceleratorStream Stream = gpu.CreateStream();
@@ -690,6 +673,76 @@ namespace MachineLearningSpectralFittingCode
             Output[index] = XMath.Log(Input[index + 1] - Input[index], XMath.E);
         }
 
+        public static Vector Power(Accelerator gpu, Vector vectorA, float pow)
+        {
+            if (pow == 2f)
+            {
+                return Vector.ConsecutiveOperation(gpu, vectorA, vectorA, '*');
+            }
+
+            AcceleratorStream stream = gpu.CreateStream();
+
+            var kernelWithStream = gpu.LoadAutoGroupedKernel<Index1, ArrayView<float>, ArrayView<float>, float>(PowerKernel);
+
+            MemoryBuffer<float> buffer = gpu.Allocate<float>(vectorA.Value.Length); // Output
+            MemoryBuffer<float> buffer2 = gpu.Allocate<float>(vectorA.Value.Length); //  Input
+
+            buffer.MemSetToZero(stream);
+            buffer2.MemSetToZero(stream);
+
+            buffer2.CopyFrom(stream, vectorA.Value, 0, 0, vectorA.Value.Length);
+
+            kernelWithStream(stream, buffer.Length, buffer.View, buffer2.View, pow);
+
+            stream.Synchronize();
+
+            float[] Output = buffer.GetAsArray(stream);
+
+            buffer.Dispose();
+            buffer2.Dispose();
+
+            stream.Dispose();
+
+            return new Vector(Output);
+
+        }
+        static void PowerKernel(Index1 index, ArrayView<float> Output, ArrayView<float> Input, float pow)
+        {
+            Output[index] = XMath.Pow(Input[index],pow);
+        }
+
+        public static Vector Power(Accelerator gpu, Vector vectorA, bool AbsSecPow)
+        {
+            AcceleratorStream stream = gpu.CreateStream();
+
+            var kernelWithStream = gpu.LoadAutoGroupedKernel<Index1, ArrayView<float>, ArrayView<float>, float>(PowerAbsKernel);
+
+            MemoryBuffer<float> buffer = gpu.Allocate<float>(vectorA.Value.Length); // Output
+            MemoryBuffer<float> buffer2 = gpu.Allocate<float>(vectorA.Value.Length); //  Input
+
+            buffer.MemSetToZero(stream);
+            buffer2.MemSetToZero(stream);
+
+            buffer2.CopyFrom(stream, vectorA.Value, 0, 0, vectorA.Value.Length);
+
+            kernelWithStream(stream, buffer.Length, buffer.View, buffer2.View, pow);
+
+            stream.Synchronize();
+
+            float[] Output = buffer.GetAsArray(stream);
+
+            buffer.Dispose();
+            buffer2.Dispose();
+
+            stream.Dispose();
+
+            return new Vector(Output);
+        }
+        static void PowerAbsKernel(Index1 index, ArrayView<float> Output, ArrayView<float> Input, float pow)
+        {
+            Output[index] = Input[index] * XMath.Abs(Input[index]);
+        }
+
 
         // DOT PRODUCT : Vector dot Scalar, Vector dot Vector
         /// <summary>
@@ -701,21 +754,15 @@ namespace MachineLearningSpectralFittingCode
         /// <param name="vectorA"></param>
         /// <param name="param"></param>
         /// <returns>float</returns>
-        public static float DotProduct(Accelerator gpu, Vector vectorA, object param )
+        public static float DotProduct(Accelerator gpu, Vector vectorA, Vector vectorB )
         {
-            if (param.GetType() == typeof(Vector))
-            {
-                return ConsecutiveOperation(gpu, vectorA, (Vector)param, '*').Value.Sum();
-            }
-            else if (param.GetType() == typeof(float))
-            {
-                return ScalarOperation(gpu, vectorA, (float)param).Value.Sum();
-            }
-            else 
-            {
-                throw new Exception("Wrong input param object, accepts only T<Vector> and T<float>");
-            }
+            return ConsecutiveOperation(gpu, vectorA, vectorB, '*').Value.Sum();
         }
+        public static float DotProduct(Accelerator gpu, Vector vectorA, float scalar)
+        {
+            return ScalarOperation(gpu, vectorA, scalar).Value.Sum();
+        }
+
 
         // NORMALISE VECTOR
         /// <summary>
@@ -758,6 +805,9 @@ namespace MachineLearningSpectralFittingCode
         {
             Output[index] = ((Input[index] - Min) / (Max - Min)) + Offset;
         }
+
+
+
 
 
     }

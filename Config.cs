@@ -295,11 +295,23 @@ namespace MachineLearningSpectralFittingCode
 
             if (Constants.r_model.Length == 1)
             {
-                Constants.sres = Vector.ScalarOperation_D(gpu, new Vector(Constants.wavelength), (1d / Constants.r_model[0]), '*');
+                double[] sres_D = Vector.ScalarOperation(gpu, new Vector(Constants.wavelength), (1d / Constants.r_model[0]), '*');
+                
+                Constants.sres = new float[sres_D.Length];
+
+                for (int i = 0; i < Constants.r_model.Length; i++)
+                {
+                    Constants.sres[i] = (float)sres_D[i];
+                }
                 return;
             }
 
-            Constants.sres = Constants.r_model;
+            Constants.sres = new float[Constants.r_model.Length];
+            for (int i = 0; i < Constants.r_model.Length; i++)
+            {
+                Constants.sres[i] = (float)Constants.r_model[i];
+            }
+            
             return;
 
         }
