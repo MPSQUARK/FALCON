@@ -715,7 +715,7 @@ namespace MachineLearningSpectralFittingCode
         {
             AcceleratorStream stream = gpu.CreateStream();
 
-            var kernelWithStream = gpu.LoadAutoGroupedKernel<Index1, ArrayView<float>, ArrayView<float>, float>(PowerAbsKernel);
+            var kernelWithStream = gpu.LoadAutoGroupedKernel<Index1, ArrayView<float>, ArrayView<float>>(PowerAbsKernel);
 
             MemoryBuffer<float> buffer = gpu.Allocate<float>(vectorA.Value.Length); // Output
             MemoryBuffer<float> buffer2 = gpu.Allocate<float>(vectorA.Value.Length); //  Input
@@ -725,7 +725,7 @@ namespace MachineLearningSpectralFittingCode
 
             buffer2.CopyFrom(stream, vectorA.Value, 0, 0, vectorA.Value.Length);
 
-            kernelWithStream(stream, buffer.Length, buffer.View, buffer2.View, pow);
+            kernelWithStream(stream, buffer.Length, buffer.View, buffer2.View);
 
             stream.Synchronize();
 
@@ -738,7 +738,7 @@ namespace MachineLearningSpectralFittingCode
 
             return new Vector(Output);
         }
-        static void PowerAbsKernel(Index1 index, ArrayView<float> Output, ArrayView<float> Input, float pow)
+        static void PowerAbsKernel(Index1 index, ArrayView<float> Output, ArrayView<float> Input)
         {
             Output[index] = Input[index] * XMath.Abs(Input[index]);
         }

@@ -45,6 +45,7 @@ namespace MachineLearningSpectralFittingCode
             // Set Configs
 
 
+
             //config.RecordSystemInfo();
 
             // Set Cosmology
@@ -72,7 +73,7 @@ namespace MachineLearningSpectralFittingCode
                 //Console.WriteLine(chis[j] / spectral_Model.Flux.Value.Length);
             }
 
-            //Console.WriteLine($"best model is {Array.IndexOf(chis, chis.Min())}");
+            Console.WriteLine($"best model is {Array.IndexOf(chis, chis.Min())}");
 
 
 

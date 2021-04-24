@@ -476,7 +476,7 @@ namespace MachineLearningSpectralFittingCode
                 // Gets Indexes of Models matching wavlengths
                 this.TrimModel();
 
-                Vector new_sres = this.DownGradeModelInvar(this.Model_wavelength, this.velocity_dispersion_r, this.Instrument_Resolution);
+                (int[] indx, Spectral_resolution res, VariableGaussianKernel vGK) = this.DownGradeModelInvar(this.Model_wavelength, this.velocity_dispersion_r, Constants.sres, this.Instrument_Resolution);
 
                 List<float> model_flux = new List<float>();
                 List<float> age_model = new List<float>();
@@ -515,7 +515,7 @@ namespace MachineLearningSpectralFittingCode
                         // downgrades the model
                         if (Program.config.Downgrade_models)
                         {
-                            flux = this.DownGrade(this.Model_wavelength, flux, this.velocity_dispersion_r,this.Restframe_Wavelength, this.Instrument_Resolution, new_sres);
+                            flux = this.DownGrade(flux, indx, res, vGK);
                         }
                         
 
@@ -607,7 +607,7 @@ namespace MachineLearningSpectralFittingCode
             return;
         }
 
-        private Vector DownGradeModelInvar(float[] mod_wavelength, int vdisp_round, Vector r_instrument)
+        private (int[], Spectral_resolution, VariableGaussianKernel) DownGradeModelInvar(float[] mod_wavelength, int vdisp_round, float[] sres, Vector r_instrument, float min_sig_pix = 0f, bool no_offset = true)
         {
             float[] new_sig = new float[mod_wavelength.Length];
 
@@ -623,22 +623,76 @@ namespace MachineLearningSpectralFittingCode
 
             }
 
-            return Vector.ScalarOperation(gpu, new Vector(new_sig), Constants.c_div_sig2, "^*");  // new_sres
-        }
-
-        private float[] DownGrade(float[] mod_wavelength, float[] flux, int vdisp_round, Vector rest_wavelength, Vector r_instrument, Vector new_sres)
-        {
+            float[] new_sres = Vector.ScalarOperation(gpu, new Vector(new_sig), Constants.c_div_sig2, "^*").Value;
 
             // IF mod_wavelength < 5 -> raise an error ?? Unlikely
 
             bool log_wave = true;
-            if ((mod_wavelength[3] - mod_wavelength[2]) - (mod_wavelength[2] - mod_wavelength[1]) < 0.000001f * (mod_wavelength[2] - mod_wavelength[1]) )
+            if ((mod_wavelength[3] - mod_wavelength[2]) - (mod_wavelength[2] - mod_wavelength[1]) < 0.000001f * (mod_wavelength[2] - mod_wavelength[1]))
             {
                 log_wave = false;
             }
 
 
-            match_spectral_resolution(mod_wavelength, flux, Constants.sres, mod_wavelength, new_sres, log10:log_wave, new_log10:log_wave);
+            // match_spectral_resolution Begins
+
+            float[] wave = mod_wavelength;
+            float[] new_sres_wave = mod_wavelength;
+
+            if (wave.Min() < new_sres_wave[0] || wave.Max() > new_sres_wave[^1])
+            {
+                Console.WriteLine("WARNING : Mapping to the new spectral resolution will require extrapolating the provided input vectors!");
+            }
+
+            Spectral_resolution new_res = new Spectral_resolution(gpu, new_sres_wave, new_sres, log_wave);
+           Spectral_resolution res = new Spectral_resolution(gpu, wave, sres, log_wave);
+
+            res.match(new_res, no_offset, min_sig_pix);
+
+            bool[] mask = Enumerable.Repeat<bool>(false, res.sig_mask.Length).ToArray();
+
+            int[] indx = (from sigpd in res.sig_pd
+                          where sigpd > min_sig_pix
+                          select Array.IndexOf(res.sig_pd, sigpd)).ToArray();
+
+
+            int len = indx.Length;
+            float[] adjusted = res.adjusted_resolution(indx);
+            VariableGaussianKernel vGK;
+            if (len > 0f)
+            {
+                float[] selectedsig = new float[len];
+                for (int i = 0; i < len; i++)
+                {
+                    sres[indx[i]] = adjusted[i]; // sres_out
+                    selectedsig[i] = res.sig_pd[indx[i]];
+                }
+
+               vGK = new VariableGaussianKernel(selectedsig);
+            }
+            else
+            {
+                sres = adjusted;                 // sres_out
+                vGK = new VariableGaussianKernel(res.sig_pd);
+            }
+
+            if (res.sig_mask.Contains(true) || mask.Contains(true))
+            {
+                for (int i = 0; i < mask.Length; i++)
+                {
+                    mask[i] = res.sig_mask[i] || mask[i];  // mask_out
+                }
+            }
+
+
+
+            return (indx, res, vGK);
+        }
+
+        private float[] DownGrade(float[] flux, int[] indx, Spectral_resolution res, VariableGaussianKernel vGK)
+        {
+
+            match_spectral_resolution(flux, indx, res, vGK);
             // Call match_spectral_resolution(mod_wavelength, flux, sres, mod_wavelength, new_sres, min_sig_pix=0.0,
             // log10=log_wave, new_log10=log_wave)
             // get : new_flux, matched_sres, sigma_offset, new_mask
@@ -646,183 +700,81 @@ namespace MachineLearningSpectralFittingCode
             return flux;
         }
 
-        private void match_spectral_resolution(float[] wave, float[] flux, float[] sres, float[] new_sres_wave, Vector new_sres, float min_sig_pix=0f, bool no_offset=true,
-            bool variable_offset = false, bool log10 = false, bool new_log10 = false) // float[flux.length] ivar and float[flux.length] mask = None 
+        private void match_spectral_resolution(float[] flux, int[] indx, Spectral_resolution res, VariableGaussianKernel vGK)
         {
-            #region
-            /*
-            // Checking if wave and sres are 2D? and making sure they are both 2D if true // firefly
-            // + Both are 1D
-
-            // Check if 
-            //          - both wave and sres are 2D but different shapes 
-            //      OR  - wave is 1D AND sres is 2D AND wave shape in x is NOT = sres shape in y
-            // + Both are 1D
-
-            // Check if
-            //          - wave is 2D and wave shape NOT = flux shape
-            //      OR  - wave is 1D and flux is 2D AND wave shape in x NOT = flux shape in y
-            //      OR  - wave is 1D and flux is 1D AND wave shape NOT = flux shape
-            // + wave and flux the same shape
-
-            // Check if
-            //          - mask in NOT NONE AND mask shape NOT = flux shape
-            // + mask is NONE
-
-            // Check if 
-            //          - ivar in NOT NONE and ivar shape NOT = flux shape
-            // + ivar is NONE
-
-            // Check if
-            //          - sres # dimensions > flux # dimensions
-            // + sres # dims = flux # dims
-
-            // Check if 
-            //          - new_sres_wave # dimensions NOT = 1
-            //      OR  - new_sres # dimensions NOT = 1
-            // + new_sres_wave and new_sres are both 1D
-
-            // Check if 
-            //          - new_sres_wave shape NOT = new_sres shape
-            // + new_sres_wave is same shape as new_sres
-            */
-
-            // Raise a warning if the new_sres vector will have to be 
-            // extrapolated for the input wavelengths
-            // Check if 
-            //          - minimum of wave < new_sres_wave[0]
-            //      OR  - maximum of wave > new_sres_wave[-1]
-            // ---> WARNS ONLY does Nothing else??
-            #endregion
-            if (wave.Min() < new_sres_wave[0] || wave.Max() > new_sres_wave[^1])
-            {
-                Console.WriteLine("WARNING : Mapping to the new spectral resolution will require extrapolating the provided input vectors!");
-            }
-
-
-            // # Initialize some variables
-            // var nspec = 1 if flux is 1D, else set equal to flux.shape[0]
-            // var nsres = 1 if flux is 1D, else set equal to sres.shape[0]
-            var dims = 1;
-
-
-            // Check if
-            //          - sres is 2D AND nspec NOT = nsres
-            // + sres is 1D and nspec = nsres
-
-
-            // spec_dim = flux # dimensions
-            // sres_dim = sres # dimensions
-            // sigma_offset = new float[nspec] 
-            
-            // 0.2s
-            Spectral_resolution new_res = new Spectral_resolution(gpu, new_sres_wave, new_sres.Value, log10 = new_log10);
-
-            // res = new float[nspec] ?? Object type? ==> new object[1]
+            //var dims = 1;
 
             // 0.2s
-            Spectral_resolution res = new Spectral_resolution(gpu, wave, sres, log10);
+            //Spectral_resolution new_res = new Spectral_resolution(gpu, new_sres_wave, new_sres.Value, log10 = new_log10);
+
+            // 0.2s
+            //Spectral_resolution res = new Spectral_resolution(gpu, wave, sres, log10);
             // 18-20s
-            res.match(new_res, no_offset, min_sig_pix);
-            float sigma_offset = res.sig_vo;
-            //Console.WriteLine($"the sig vo is : {sigma_offset}");
-
-            // Get the kernel parameters necessary to match all spectra to the new resolution
-            // Check if nsres is 1 and sres_dim is 1
-            //      res[0] = spectral_resolution(wave,sres,log10=log10)
-            //      res[0].match(new_res, no_offset = no_offset, min_sig_pix = min_sig_pix)
-            //      sigma_offset[0] = res[0].sig_vo
-            //      for loop from 1 to nspec:
-            //          res[i] = res[0]
-            // ELSE
-            //      for loop (over i) from 0 to nsres:
-            //          _wave = flatten{ wave[@i,:] } if wave is 2D else set as wave
-            //          _sres = flatten{ sres[@i,:] } if sres is 2D else set as sres
-            //          res[@i] = spectral_resolution(_wave,_sres,log10=log10)
-            //          res[@i].match(new_res, no_offset=no_offset, min_sig_pix=min_sig_pix)
-            //          sigma_offset[@i] = res[@i].sig_vo
-
-            // # Force all the offsets to be the same, if requested - Line 996 - firefly_instrument.py
-            //if (!no_offset && !variable_offset)
-            //{
-            //    // Assuming only 1 value for sigma offset
-            //    // thus common_offset = sigma_offset
-            //    // thus offset_diff = 0f
-            //    // thus Method res.offset_GaussianKernelDifference(0) returns None
-            //}
+            //res.match(new_res, no_offset, min_sig_pix);
+            //float sigma_offset = res.sig_vo;
 
             // FLUX DEPENDENT SECTION
-            float[] out_flux = flux;
-            // out_ivar = None if ivar is None else np.ma.MaskedArray(ivar.copy())
-            // noise = None if ivar is None else np.ma.sqrt(1.0/out_ivar)
-            float[] out_sres = sres;
-            // mask = None
-            bool[] mask = Enumerable.Repeat<bool>(false, flux.Length).ToArray();
-            bool[] out_mask = mask;
-
-            // Assume nspec == 1 and spec_dim == 1 === dim == 1    #01
-            int[] indx = (from sigpd in res.sig_pd
-                          where sigpd > min_sig_pix
-                          select Array.IndexOf(res.sig_pd, sigpd)).ToArray();
-            // ivar is None                                         #02
+            //float[] out_flux = flux;
 
             int len = indx.Length;
             if (len > 0)
             {
                 float[] selectedflux = new float[len];
-                float[] selectedsig = new float[len];
                 for (int i = 0; i < len; i++)
                 {
                     selectedflux[i] = flux[indx[i]];
-                    selectedsig[i] = res.sig_pd[indx[i]];
                 }
-                float[] selected_outflux = convolution_variable_sigma(selectedflux, selectedsig);
+
+                float[] selected_outflux = vGK.Convolve(selectedflux);
                 for (int i = 0; i < len; i++)
                 {
-                    out_flux[indx[i]] = selected_outflux[i]; 
+                    flux[indx[i]] = selected_outflux[i];   // flux out
                 }
             }
             else
             {
-                out_flux = convolution_variable_sigma(flux, res.sig_pd);
+                // VERY SLOW LINE OF CODE 18sec
+                flux = vGK.Convolve(flux);               // flux out
             }
-
+            #region
             // thus ignor else                                      #02
 
-            float[] adjusted = res.adjusted_resolution(indx);
-            if (len > 0f)
-            {
-                for (int i = 0; i < indx.Length; i++)
-                {
-                    out_sres[indx[i]] = adjusted[i];
-                }
-            }
-            else
-            {
-                out_sres = adjusted;
-            }
+            //float[] adjusted = res.adjusted_resolution(indx);
+            //if (len > 0f)
+            //{
+            //    for (int i = 0; i < indx.Length; i++)
+            //    {
+            //        out_sres[indx[i]] = adjusted[i];
+            //    }
+            //}
+            //else
+            //{
+            //    out_sres = adjusted;
+            //}
 
-            if (res.sig_mask.Contains(true) || mask.Contains(true))
-            {
-                for (int i = 0; i < mask.Length; i++)
-                {
-                    out_mask[i] = res.sig_mask[i] || mask[i];
-                }
-            }
-            else
-            {
-                out_mask = mask;
-            }
+            //if (res.sig_mask.Contains(true) || mask.Contains(true))
+            //{
+            //    for (int i = 0; i < mask.Length; i++)
+            //    {
+            //        out_mask[i] = res.sig_mask[i] || mask[i];
+            //    }
+            //}
+            //else
+            //{
+            //    out_mask = mask;
+            //}
             //thus ignore else                                       #01
-
+            #endregion
 
         }
 
-        private float[] convolution_variable_sigma(float[] y, float[] sigma) //ye= None, integral= False) 
-        {
-
-            return new float[0];
-        }
+        //private float[] convolution_variable_sigma(float[] y) //ye= None, integral= False) 
+        //{
+        //    // Sigma is INDEPENDANT OF THE FLUX
+        //    // NO WONDER THIS IS SLOW
+        //    // THIS IS MAKING NEW CLASS INSTANCES EVERY DOUBLE FOR LOOP !!!!
+        //    return new VariableGaussianKernel(sigma).Convolve(y);
+        //}
 
 
         private void Match_data_models()

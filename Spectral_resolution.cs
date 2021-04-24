@@ -10,7 +10,7 @@ namespace MachineLearningSpectralFittingCode
     class Spectral_resolution
     {
         // Constructor
-        public Spectral_resolution(Accelerator gpu, float[] wave_in, float[] sres_in, bool log10_in = false, string interp_ext_in="extrapolate")
+        public Spectral_resolution(Accelerator gpu, float[] wave_in, float[] sres_in, bool log10_in = false, string interp_ext_in = "extrapolate")
         {
             this.gpu = gpu;
 
@@ -28,7 +28,7 @@ namespace MachineLearningSpectralFittingCode
                 this.dv = this.spectrum_velocity_scale(wave_in);
                 return;
             }
-            
+
             // If log10_in is false
             this.dw = wave_in[1] - wave_in[0];
 
@@ -36,7 +36,7 @@ namespace MachineLearningSpectralFittingCode
 
         }
 
-        
+
         // Variable Block
         Accelerator gpu;
         protected bool log10 { get; private set; }
@@ -56,10 +56,10 @@ namespace MachineLearningSpectralFittingCode
         // Methods
         private float spectrum_velocity_scale(float[] wave)
         {
-            return Constants.c_kms * this.spectral_coordinate_step(wave, log:true, _base:MathF.E);
+            return Constants.c_kms * this.spectral_coordinate_step(wave, log: true, _base: MathF.E);
         }
 
-        private float spectral_coordinate_step(float[] wave, bool log=false, float _base=10f)
+        private float spectral_coordinate_step(float[] wave, bool log = false, float _base = 10f)
         {
             if (_base == MathF.E && log)
             {
@@ -78,7 +78,7 @@ namespace MachineLearningSpectralFittingCode
 
         public void match(Spectral_resolution new_sres, bool no_offset = true, float min_sig_pix = 0f)
         {
-            this.GaussianKernelDifference(new_sres,no_offset,min_sig_pix);
+            this.GaussianKernelDifference(new_sres, no_offset, min_sig_pix);
         }
 
         private void GaussianKernelDifference(Spectral_resolution new_sres, bool no_offset = true, float min_sig_pix = 0f)
@@ -118,7 +118,7 @@ namespace MachineLearningSpectralFittingCode
             float[] dv = new float[_wave.Length - 1];
             for (int i = 0; i < dv.Length; i++)
             {
-                dv[i] = Constants.c_kms * (2 * (_wave[i+1] - _wave[i]) / (_wave[i+1] + _wave[i]) );
+                dv[i] = Constants.c_kms * (2 * (_wave[i + 1] - _wave[i]) / (_wave[i + 1] + _wave[i]));
             }
 
             this.sig_vo = neg_amin_sig2_vd - MathF.Pow((this.min_sig * dv.Max()), 2f);
@@ -173,7 +173,7 @@ namespace MachineLearningSpectralFittingCode
         static void DetermineVarianceKernel(Index1 index, ArrayView<float> Output, ArrayView<float> wave,
             ArrayView<float> interp_sres, ArrayView<float> sres, float fwhm, float c)
         {
-            Output[index] = XMath.Pow( (c / wave[index]) ,2f) * XMath.Pow((wave[index] / fwhm), 2f) *
+            Output[index] = XMath.Pow((c / wave[index]), 2f) * XMath.Pow((wave[index] / fwhm), 2f) *
                 (1f / XMath.Pow(interp_sres[index], 2f) - 1f / XMath.Pow(sres[index], 2f));
         }
 
@@ -184,7 +184,7 @@ namespace MachineLearningSpectralFittingCode
                 return Vector.ScalarOperation(gpu, new Vector(sig2_vd), MathF.Pow(this.dv, -2f), "*").Value;
             }
 
-            float inv_cdw_squ = 1f / MathF.Pow(Constants.c_kms * this.dw,2f);
+            float inv_cdw_squ = 1f / MathF.Pow(Constants.c_kms * this.dw, 2f);
             float[] Output = new float[sig2_vd.Length];
             for (int i = 0; i < Output.Length; i++)
             {
@@ -216,20 +216,22 @@ namespace MachineLearningSpectralFittingCode
             return;
         }
 
-        public float[] adjusted_resolution(int[] indxs )
+        public float[] adjusted_resolution(int[] indxs)
         {
-            float c_by_sig2fwhm = Constants.c_kms / Constants.sig2FWHM;
+            
+            
+            float sig2fwhm_by_c_sq = MathF.Pow(Constants.sig2FWHM / Constants.c_kms, 2f);
             float[] output;
             float[] pd2vd;
-            if (indxs == null)
+            if (indxs.Length == 0)
             {
                 output = new float[this.sig_pd.Length];
                 pd2vd = convert_pd2vd(Vector.Power(gpu, new Vector(this.sig_pd), true).Value);
 
                 for (int i = 0; i < output.Length; i++)
                 {
-                    output[i] = c_by_sig2fwhm / MathF.Sqrt(pd2vd[i])
-                         + 1f / MathF.Pow(this.interpolator.Y[i],2f);
+                    output[i] = 1f / MathF.Sqrt(sig2fwhm_by_c_sq * pd2vd[i]
+                         + 1f / MathF.Pow(this.interpolator.Y[i], 2f) );
                 }
 
                 return output;
@@ -241,13 +243,13 @@ namespace MachineLearningSpectralFittingCode
             for (int i = 0; i < output.Length; i++)
             {
                 selected_sig[i] = this.sig_pd[indxs[i]] * MathF.Abs(this.sig_pd[indxs[i]]);
-                selected_sres[i] = 1f / MathF.Pow(this.interpolator.Y[indxs[i]],2f);
+                selected_sres[i] = 1f / MathF.Pow(this.interpolator.Y[indxs[i]], 2f);
             }
 
             pd2vd = convert_pd2vd(selected_sig);
             for (int i = 0; i < output.Length; i++)
             {
-                output[i] = c_by_sig2fwhm / MathF.Sqrt(pd2vd[i]) + selected_sres[i];
+                output[i] = 1f/ MathF.Sqrt(sig2fwhm_by_c_sq * MathF.Sqrt(pd2vd[i]) + selected_sres[i]);
             }
 
             return output;
@@ -259,6 +261,7 @@ namespace MachineLearningSpectralFittingCode
             {
                 return Vector.ScalarOperation(gpu, new Vector(sig2_pd), MathF.Pow(this.dv, 2f), "*").Value;
             }
+
 
             float[] sig_sq_cdw = Vector.ScalarOperation(gpu, new Vector(sig2_pd), MathF.Pow(Constants.c_kms * this.dw, 2f), "*").Value;
             float[] output = new float[sig_sq_cdw.Length];
@@ -272,4 +275,37 @@ namespace MachineLearningSpectralFittingCode
 
 
     }
+
+    class VariableGaussianKernel
+    {
+        public VariableGaussianKernel(float[] sigma, float minsig=0.01f,int nsig=3, bool integral=false)
+        {
+            this.n = sigma.Length;
+            this.sigma = (from sig in sigma
+                          select Math.Clamp(sig, minsig, sigma.Max())).ToArray();
+            this.p = (int)MathF.Ceiling(this.sigma.Max() * nsig);
+            this.m = 2 * this.p + 1;
+
+            float interval = (2f*MathF.Abs(this.p)) / this.m - 1;
+            float[] linspaced = (from val in Enumerable.Range(0, this.m)
+                                 select MathF.Pow(-this.p + (val * interval), 2f)).ToArray();
+            
+        
+        }
+
+        private int n { get; set; }
+        private float[] sigma { get; set; }
+        private int p { get; set; }
+        private int m { get; set; }
+
+
+        public float[] Convolve(float[] y) //ye=None
+        {
+
+            return new float[0];
+        }
+
+
+    }
+
 }
