@@ -37,9 +37,10 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS WITH THE SOFTWARE.
 #      - In any situation when this 'SOFTWARE' is used in another product,
 #        program, software or equivalent, or in research the appropriate 
 #        reference/acreditation/citation must be performed in an easily accessible 
-#        visible location appropriate to the situation, for example in the 
+#        and visible location appropriate to the situation, for example in the 
 #        bibliography at the end of an article, or in the credits of a 
-#        program/software or equivalent.
+#        program/software or equivalent in a font size equivalent to that 
+#        of 11 in Calibri.
 #    
 
 ##########################     TERMINOLOGY      #############################   
@@ -96,5 +97,3 @@ FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE CONTRIBUTORS
 OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
 WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS WITH THE SOFTWARE.
-
-
