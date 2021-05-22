@@ -26,56 +26,67 @@ namespace MachineLearningSpectralFittingCode
 
             config = new Config();
             gpu = config.GetHardware(context);
-            
+
             cosmology = new Cosmology();
             cosmology.Initialise();
 
             //UI UserInterface = new UI(config);
             config.Setup(gpu);
 
-            string Data_path = PathOfProgram + @"\Data\spec-0266-51602-0001.dat";
+            //string Data_path = PathOfProgram + @"\Data\spec-0266-51602-0001.dat";
 
             // Timer
             var watch = System.Diagnostics.Stopwatch.StartNew();
 
             /* PRE-INITIALISATION
             */
-            File.WriteAllText($"{PathOfProgram}Log.txt", $"{System.DateTime.Now} : Starting Pre-Initialisation\n");
-
-            // Set Configs
-
-
-
-            //config.RecordSystemInfo();
-
-            // Set Cosmology
-
-
-            // Enable UI to SET User Defined config
+            //File.WriteAllText($"{PathOfProgram}Log.txt", $"{System.DateTime.Now} : Starting Pre-Initialisation\n");
 
 
             // PROGRAM START
             Console.WriteLine("Start");
 
 
-            //// READ IN DATA
-            Vector Data = new Vector(UtilityMethods.ReadData(Data_path), 3); // Data Is read in as a 2D Vector of 3 columns
+            string[] files = Directory.GetFiles(PathOfProgram + "/Data", "*.*fits", SearchOption.AllDirectories);
+            
+            if (files.Length == 0) { throw new Exception("No fits files in Data folder"); }
 
-            Spectral_Model spectral_Model = new Spectral_Model(Data_path, config.Milky_Way_Reddening, config.HPF_Mode, config.N_Masked_Amstrongs, gpu);
-            spectral_Model.InitialiseSpectraParameters(Data, config.Redshift, config.RA_DEC, config.Velocity_Dispersion, config.Instrument_Resolution);
-            spectral_Model.Fit_models_to_data();
+            Vector[] Wavelength = new Vector[files.Length];
+            Vector[] Flux = new Vector[files.Length];
+            Vector[] Error = new Vector[files.Length];
+            float[] redshift = new float[files.Length];
+            float[] vdisp = new float[files.Length];
+            float[] ra = new float[files.Length];
+            float[] dec = new float[files.Length];
 
-            float[] chis = new float[spectral_Model.Model_ages.Length];
-
-            for (int j = 0; j < chis.Length; j++)
+            Parallel.For(0, files.Length, i =>
             {
-                chis[j] = spectral_Model.CalculateChiSqu(j);
-                //Console.WriteLine(chis[j] / spectral_Model.Flux.Value.Length);
-            }
+                (Wavelength[i], Flux[i], Error[i], redshift[i], vdisp[i], ra[i], dec[i]) = UtilityMethods.ReadDataFits(gpu, files[i]);
 
-            Console.WriteLine($"best model is {Array.IndexOf(chis, chis.Min())}");
+                Spectral_Model spectral_Model = new Spectral_Model(files[i], config.Milky_Way_Reddening, config.HPF_Mode, config.N_Masked_Amstrongs, gpu);
+                spectral_Model.InitialiseSpectraParameters(Wavelength[i], Flux[i], Error[i], redshift[i], new float[2] { ra[i], dec[i] }, vdisp[i], config.Instrument_Resolution);
+
+                spectral_Model.Fit_models_to_data();
+
+            });
+
+            //Console.WriteLine($"File : {files[2]}\n");
+
+            //(Wavelength[2], Flux[2], Error[2], redshift[2], vdisp[2], ra[2], dec[2]) = UtilityMethods.ReadDataFits(gpu, files[2]);
+
+            //Spectral_Model spectral_Model = new Spectral_Model(files[2], config.Milky_Way_Reddening, config.HPF_Mode, config.N_Masked_Amstrongs, gpu);
+            //spectral_Model.InitialiseSpectraParameters(Wavelength[2], Flux[2], Error[2], redshift[2], new float[2] { ra[2], dec[2] }, vdisp[2], config.Instrument_Resolution);
+
+            //spectral_Model.Fit_models_to_data();
 
 
+            //// READ IN DATA
+            //Vector Data = new Vector(UtilityMethods.ReadData(Data_path), 3); // Data Is read in as a 2D Vector of 3 columns
+
+            //    Spectral_Model spectral_Model = new Spectral_Model(Data_path, config.Milky_Way_Reddening, config.HPF_Mode, config.N_Masked_Amstrongs, gpu);
+            //    spectral_Model.InitialiseSpectraParameters(Data, config.Redshift, config.RA_DEC, config.Velocity_Dispersion, config.Instrument_Resolution);
+
+            //    spectral_Model.Fit_models_to_data();
 
 
             //Spectral_Model[] spectral_Models = new Spectral_Model[500];
@@ -100,9 +111,12 @@ namespace MachineLearningSpectralFittingCode
 
             watch.Stop();
             var elapsedMs = watch.ElapsedMilliseconds;
+            Console.WriteLine($"\nGalaxies analysed {files.Length}");
             Console.WriteLine("Time Taken to Complete " + (elapsedMs * 0.001f).ToString() + "s");
-            Console.WriteLine("Time Taken to Complete per Spectra " + (elapsedMs * 0.001f / 500f).ToString() + "s");
+            Console.WriteLine("Time Taken to Complete per Spectra " + (elapsedMs * 0.001f / files.Length).ToString() + "s");
 
+            Console.WriteLine("Press Enter to close");
+            Console.ReadLine();
 
             //for (int i = 0; i < chis.Length; i++)
             //{

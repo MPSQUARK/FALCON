@@ -198,7 +198,7 @@ namespace MachineLearningSpectralFittingCode
                     kernelWithStream = gpu.LoadAutoGroupedKernel<Index1, ArrayView<float>, ArrayView<float>, float>(ScalarSumKernal);
                     break;
                 case "^*":  // flip the Vector e.g. 1/Vector then multiply by Scalar
-                    kernelWithStream = gpu.LoadAutoGroupedKernel<Index1, ArrayView<float>, ArrayView<float>, float>(ScalarProductInvVec_DKernal);
+                    kernelWithStream = gpu.LoadAutoGroupedKernel<Index1, ArrayView<float>, ArrayView<float>, float>(ScalarProductInvVecKernal);
                     break;
             }
 
@@ -228,7 +228,7 @@ namespace MachineLearningSpectralFittingCode
         {
             OutPut[index] = Input[index] + Scalar;
         }
-        static void ScalarProductInvVec_DKernal(Index1 index, ArrayView<float> OutPut, ArrayView<float> Input, float Scalar)
+        static void ScalarProductInvVecKernal(Index1 index, ArrayView<float> OutPut, ArrayView<float> Input, float Scalar)
         {
             OutPut[index] = Scalar / Input[index];
         }
@@ -670,7 +670,7 @@ namespace MachineLearningSpectralFittingCode
         }
         static void DiffLogKernel(Index1 index, ArrayView<float> Output, ArrayView<float> Input)
         {
-            Output[index] = XMath.Log(Input[index + 1] - Input[index], XMath.E);
+            Output[index] = XMath.Log(Input[index + 1], XMath.E) - XMath.Log(Input[index], XMath.E);
         }
 
         public static Vector Power(Accelerator gpu, Vector vectorA, float pow)
@@ -742,6 +742,106 @@ namespace MachineLearningSpectralFittingCode
         {
             Output[index] = Input[index] * XMath.Abs(Input[index]);
         }
+
+        public static Vector MultiplySumAxZero(Accelerator gpu, Vector vectorA, Vector vectorB)
+        {
+            AcceleratorStream stream = gpu.CreateStream();
+
+            var kernelWithStream = gpu.LoadAutoGroupedKernel<Index1, ArrayView<float>, ArrayView<float>, ArrayView<float>, int, int>(MultiplySumAxZeroKernel);
+
+            MemoryBuffer<float> buffer = gpu.Allocate<float>(vectorA.Columns); // Output
+            MemoryBuffer<float> buffer2 = gpu.Allocate<float>(vectorA.Value.Length); //  Input
+            MemoryBuffer<float> buffer3 = gpu.Allocate<float>(vectorB.Value.Length); //  Input
+
+            buffer.MemSetToZero(stream);
+            buffer2.MemSetToZero(stream);
+            buffer3.MemSetToZero(stream);
+
+            buffer2.CopyFrom(stream, vectorA.Value, 0, 0, vectorA.Value.Length);
+            buffer3.CopyFrom(stream, vectorB.Value, 0, 0, vectorB.Value.Length);
+
+            kernelWithStream(stream, vectorA.Columns, buffer.View, buffer2.View, buffer3.View, vectorA.Columns, vectorA.Value.Length / vectorA.Columns );
+
+            stream.Synchronize();
+
+            float[] Output = buffer.GetAsArray(stream);
+
+            buffer.Dispose();
+            buffer2.Dispose();
+
+            stream.Dispose();
+
+            return new Vector(Output, vectorA.Columns);
+        }
+        static void MultiplySumAxZeroKernel(Index1 index, ArrayView<float> Output, ArrayView<float> InputA, ArrayView<float> InputB, int columns, int rows)
+        {
+            for (int i = 0; i < rows; i++)
+            {
+                Output[index] += InputA[i * columns + index] * InputB[i * columns + index];
+            }
+
+        }
+
+        public static Vector TenToPowerVector(Accelerator gpu, float[] vector)
+        {
+            AcceleratorStream stream = gpu.CreateStream();
+
+            var kernelWithStream = gpu.LoadAutoGroupedKernel<Index1, ArrayView<float>>(TenToPowerVectorKernel);
+
+            MemoryBuffer<float> buffer = gpu.Allocate<float>(vector.Length); // IO
+
+            buffer.MemSetToZero(stream);
+
+            buffer.CopyFrom(stream, vector, 0, 0, vector.Length);
+
+            kernelWithStream(stream, vector.Length, buffer.View);
+
+            stream.Synchronize();
+
+            float[] Output = buffer.GetAsArray(stream);
+
+            buffer.Dispose();
+
+            stream.Dispose();
+
+            return new Vector(Output, 1);
+
+        }
+        static void TenToPowerVectorKernel(Index1 index, ArrayView<float> IO)
+        {
+            IO[index] = XMath.Pow(10f, IO[index]);
+        }
+
+        public static Vector InvSqrt(Accelerator gpu, float[] vector)
+        {
+            AcceleratorStream stream = gpu.CreateStream();
+
+            var kernelWithStream = gpu.LoadAutoGroupedKernel<Index1, ArrayView<float>>(InvSqrtKernel);
+
+            MemoryBuffer<float> buffer = gpu.Allocate<float>(vector.Length); // IO
+
+            buffer.MemSetToZero(stream);
+
+            buffer.CopyFrom(stream, vector, 0, 0, vector.Length);
+
+            kernelWithStream(stream, vector.Length, buffer.View);
+
+            stream.Synchronize();
+
+            float[] Output = buffer.GetAsArray(stream);
+
+            buffer.Dispose();
+
+            stream.Dispose();
+
+            return new Vector(Output, 1);
+
+        }
+        static void InvSqrtKernel(Index1 index, ArrayView<float> IO)
+        {
+            IO[index] = XMath.Rsqrt(IO[index]);
+        }
+
 
 
         // DOT PRODUCT : Vector dot Scalar, Vector dot Vector

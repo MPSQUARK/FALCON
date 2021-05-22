@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text.RegularExpressions;
+using ILGPU.Runtime;
+using nom.tam.fits;
 
 
 namespace MachineLearningSpectralFittingCode
@@ -24,7 +26,38 @@ namespace MachineLearningSpectralFittingCode
             //}
 
             return Data;
-        } 
+        }
+
+        public static (Vector, Vector, Vector, float, float, float, float) ReadDataFits(Accelerator gpu, string path)
+        {
+            //string path = @"C:\Users\marce\source\repos\MachineLearningSpectralFittingCode\Data\";
+            //string spec = "0266 -51630-0034";
+            Fits f = new Fits(path);
+            BasicHDU hdu = f.GetHDU(2);
+            nom.tam.util.ColumnTable table = (nom.tam.util.ColumnTable)hdu.Data.DataArray;
+            float redshift = ((float[])table.GetColumn(63))[0];
+            float vdisp = ((float[])table.GetColumn(72))[0];
+
+            hdu = f.GetHDU(1);
+            table = (nom.tam.util.ColumnTable)hdu.Data.DataArray;
+            
+            Vector wavelength = Vector.TenToPowerVector(gpu, (float[])table.GetColumn(1));
+
+            Vector flux = new Vector((float[])table.GetColumn(0), 1);
+
+            Vector error = Vector.InvSqrt(gpu, (float[])table.GetColumn(2));
+
+
+            hdu = f.GetHDU(0);
+            float ra = hdu.Header.GetFloatValue("RA");
+            float dec = hdu.Header.GetFloatValue("DEC");
+
+            return (wavelength, flux, error, redshift, vdisp, ra, dec);
+        }
+
+
+
+
 
         public static float Degree2Radians(float Deg)
         {
@@ -365,6 +398,7 @@ namespace MachineLearningSpectralFittingCode
                     // point p may be outside abscissa's range
                     // if it is, we return null
                     Rx = X.First(s => s >= p);
+
                 }
                 catch
                 {
@@ -390,16 +424,23 @@ namespace MachineLearningSpectralFittingCode
 
                 int i = lX.IndexOf(Rx);
 
+
                 // provide for index not found and lower and upper tabulated bounds
                 if (i == -1)
+                {
                     Console.WriteLine("SomeThing went wrong in Utility Methods : Linear interpolation Ln378");
                     return 0;
+                }
 
                 if (i == len - 1 && X[i] == p)
+                {
                     return Y[len - 1];
+                }
 
                 if (i == 0)
+                {
                     return Y[0];
+                }
 
                 // linearly interpolate between two adjacent points
                 float h = (X[i] - X[i - 1]);
@@ -416,6 +457,7 @@ namespace MachineLearningSpectralFittingCode
                 Console.WriteLine("SomeThing went wrong in Utility Methods : Linear interpolation Ln400");
                 return 0;
             }
+
         }
 
 

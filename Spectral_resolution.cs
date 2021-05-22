@@ -21,6 +21,7 @@ namespace MachineLearningSpectralFittingCode
             }
 
             this.interpolator = new LinearInterpolation(wave_in, sres_in); // k = 1, and extrapolate 
+
             this.log10 = log10_in;
 
             if (log10_in)
@@ -93,10 +94,26 @@ namespace MachineLearningSpectralFittingCode
             // This could be slow??
             for (int i = 0; i < _wave.Length; i++)
             {
-                interp_sres[i] = this.interpolator.Interpolate(_wave[i]);
+                interp_sres[i] = new_sres.interpolator.Interpolate(_wave[i]);
             }
+            
+
+            // Issue?
+
+            //float[] sig2_wd = new float[_wave.Length];
+            //for (int i = 0; i < sig2_wd.Length; i++)
+            //{
+            //    sig2_wd[i] = MathF.Pow(_wave[i] / Constants.sig2FWHM, 2f) * (1.0f / MathF.Pow(interp_sres[i], 2f) - 1.0f / MathF.Pow(_sres[i], 2f));
+            //}
+
+            //float[] sig2_vd = new float[sig2_wd.Length];
+            //for (int i = 0; i < sig2_vd.Length; i++)
+            //{
+            //    sig2_vd[i] = MathF.Pow(Constants.c_kms / _wave[i],2f) * sig2_wd[i];
+            //}
 
             float[] sig2_vd = DetermineVariance(_wave, interp_sres, _sres);
+
 
             // OPTION 1
             if (no_offset)
@@ -105,6 +122,7 @@ namespace MachineLearningSpectralFittingCode
 
                 if (log10)
                 {
+                    // ISSUE - dv is waaaay off Supposed to be 69.02976392336477
                     this.finalize_GaussianKernelDifference(Vector.ScalarOperation(gpu, new Vector(sig2_vd), MathF.Pow(this.dv, 2f), "/").Value);
                     return;
                 }
@@ -114,6 +132,7 @@ namespace MachineLearningSpectralFittingCode
             }
 
             // Option 2
+
             float neg_amin_sig2_vd = -sig2_vd.Min();
             float[] dv = new float[_wave.Length - 1];
             for (int i = 0; i < dv.Length; i++)
@@ -133,8 +152,8 @@ namespace MachineLearningSpectralFittingCode
                 this.sig_vo = 0f;
             }
 
-            float[] sig2_pd = this.convert_vd2pd(sig2_vd, _wave);
 
+            float[] sig2_pd = this.convert_vd2pd(sig2_vd, _wave);
             this.finalize_GaussianKernelDifference(sig2_pd);
         }
         private float[] DetermineVariance(float[] wave, float[] interp_sres, float[] sres)
@@ -198,7 +217,10 @@ namespace MachineLearningSpectralFittingCode
         {
             int[] indx = UtilityMethods.WhereIsClose(sig2_pd, 0f);
             int[] nindx = UtilityMethods.WhereNot(indx, sig2_pd.Length);
+
+            // ISSUE - ALL INF
             this.sig_pd = sig2_pd;
+
             for (int i = 0; i < nindx.Length; i++)
             {
                 this.sig_pd[nindx[i]] = sig2_pd[nindx[i]] / MathF.Sqrt(MathF.Abs(sig2_pd[nindx[i]]));
@@ -278,32 +300,139 @@ namespace MachineLearningSpectralFittingCode
 
     class VariableGaussianKernel
     {
-        public VariableGaussianKernel(float[] sigma, float minsig=0.01f,int nsig=3, bool integral=false)
+        public VariableGaussianKernel(Accelerator gpu, float[] sigma, float minsig=0.01f,int nsig=3, bool integral=false)
         {
             this.n = sigma.Length;
-            this.sigma = (from sig in sigma
-                          select Math.Clamp(sig, minsig, sigma.Max())).ToArray();
+            //this.sigma = (from sig in sigma
+            //              select Math.Clamp(sig, minsig, sigma.Max())).ToArray();
+            this.sigma = sigma;
+            for (int i = 0; i < sigma.Length; i++)
+            {
+                if (this.sigma[i] < minsig) { this.sigma[i] = minsig; }
+                if (this.sigma[i] > sigma.Max()) { this.sigma[i] = sigma.Max(); }
+            }
+
             this.p = (int)MathF.Ceiling(this.sigma.Max() * nsig);
             this.m = 2 * this.p + 1;
 
             float interval = (2f*MathF.Abs(this.p)) / this.m - 1;
-            float[] linspaced = (from val in Enumerable.Range(0, this.m)
+            float[] x2 = (from val in Enumerable.Range(0, this.m)
                                  select MathF.Pow(-this.p + (val * interval), 2f)).ToArray();
-            
-        
+
+            if (!integral)
+            {
+                this.kernel = kernCalculation(gpu, x2, this.sigma);
+            }
+            else
+            {
+                Console.WriteLine("WARNING integral = true in Variable Gaussian KERNEL");
+            }
+
         }
 
         private int n { get; set; }
         private float[] sigma { get; set; }
         private int p { get; set; }
         private int m { get; set; }
+        private Vector kernel { get; set; }
 
 
-        public float[] Convolve(float[] y) //ye=None
+        public float[] Convolve(Accelerator gpu, float[] y) //ye=None
+        {
+            if (y.Length != this.n)
+            {
+                throw new Exception("Convolution ERROR : y array not the same length as n");
+            }
+
+            // assume ye is None
+            // if ye = None
+            Vector a = this.Create_a(y);
+            Vector result = Vector.MultiplySumAxZero(gpu, a, this.kernel); // PRECISION MAY NEED TO USE DOUBLES
+
+            // else ae = create_a(ye**2) { return sum(a* (this.kernel,axis=0)), sqrt(sum(ae*(this.kernel, axis=0)))}
+
+            return result.Value;
+        }
+
+        private Vector Create_a(float[] y)
+        {
+            List<float> a = new List<float>();
+
+            for (int i = 0; i < m; i++)
+            {
+                a.AddRange(new float[p]);
+                float[] yrange = y[i..(this.n - this.m + i + 1)];
+                a.AddRange(yrange);
+                a.AddRange(new float[p]);
+            }
+
+            return new Vector(a.ToArray(), this.kernel.Columns);
+        }
+
+        private Vector kernCalculation(Accelerator gpu, float[] x2, float[] sigma)
         {
 
-            return new float[0];
+            AcceleratorStream Stream = gpu.CreateStream();
+
+            var buffer = gpu.Allocate<float>(x2.Length * sigma.Length); // OUTPUT
+            var buffer2 = gpu.Allocate<float>(x2.Length); // INPUT
+            var buffer3 = gpu.Allocate<float>(sigma.Length); // INPUT
+
+
+            buffer.MemSetToZero(Stream);
+            buffer2.MemSetToZero(Stream);
+            buffer3.MemSetToZero(Stream);
+
+
+            buffer2.CopyFrom(Stream, x2, 0, 0, x2.Length);
+            buffer3.CopyFrom(Stream, sigma, 0, 0, sigma.Length);
+
+
+            var kernelWithStream = gpu.LoadAutoGroupedKernel<Index1, ArrayView<float>, ArrayView<float>, ArrayView<float>>(kernCalcKERNEL);
+
+            kernelWithStream(Stream, buffer3.Length, buffer.View, buffer2.View, buffer3.View);
+
+            Stream.Synchronize();
+
+            float[] Output = buffer.GetAsArray(Stream);
+
+            buffer.Dispose();
+            buffer2.Dispose();
+            buffer3.Dispose();
+
+            Stream.Dispose();
+
+            return new Vector(Output, sigma.Length);
         }
+        static void kernCalcKERNEL(Index1 index, ArrayView<float> output, ArrayView<float> x2, ArrayView<float> sig)
+        {
+
+            //output[index] = XMath.Exp(x2[XMath.DivRoundDown(index, len)] * 0.5f / XMath.Pow(sig[index % len], 2f));
+            //ArrayView<float> partialoutput2 = new ArrayView<float>(x2.Length);
+            float sum = 0f;
+            int indx = 0;
+
+            for (int i = 0; i < x2.Length; i++)
+            {
+                indx = index + sig.Length * i;
+
+                output[indx] = XMath.Exp((-x2[i] * 0.5f) / XMath.Pow(sig[index], 2f));
+                //partialoutput[i] = XMath.Exp((-x2[i] * 0.5f) / XMath.Pow(sig[index], 2f));
+                sum += output[indx];
+            }
+
+            sum = 1f / sum; // reciprocal of the sum
+
+            for (int i = 0; i < x2.Length; i++)
+            {
+                indx = index + sig.Length * i;
+                //output[(int)(index + sig.Length * i)] = partialoutput[i] / sum;
+
+                output[indx] *= sum;
+            }
+            
+        }
+
 
 
     }
