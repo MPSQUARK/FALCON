@@ -30,4 +30,8 @@
     <Folder Include="Output\" />
   </ItemGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="..\DataScience\DataScience\DataScience.csproj" />
+  </ItemGroup>
+
 </Project>

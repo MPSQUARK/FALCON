@@ -1,8 +1,9 @@
-﻿using System;
+﻿using BAVCL;
+using System;
 using System.Collections.Generic;
 using System.Text;
 
-namespace MachineLearningSpectralFittingCode
+namespace FALCON
 {
     
     public struct Constants
@@ -64,21 +65,18 @@ namespace MachineLearningSpectralFittingCode
         // OBSERVATIONAL ASTRONOMY PARAMETERS
 
         // RA(radians),Dec(radians),distance(kpc) of Galactic center in J2000
-        readonly public static Vector Galactic_Center_Equatorial = 
-            new Vector(
+        readonly public static float[] Galactic_Center_Equatorial = 
                 new float[3] { 
                     UtilityMethods.Degree2Radians(266.40510f), 
                     UtilityMethods.Degree2Radians(-28.936175f), 
-                    8.33f }, 1
-                );
+                    8.33f 
+                };
         // RA(radians),Dec(radians) of Galactic Northpole in J2000
-        readonly public static Vector Galactic_Northpole_Equatorial =
-            new Vector(
+        readonly public static float[] Galactic_Northpole_Equatorial =
                 new float[2] {
                     UtilityMethods.Degree2Radians(192.859508f),
                     UtilityMethods.Degree2Radians(27.128336f)
-                    }, 1
-                );
+                };
 
 
 
@@ -103,7 +101,7 @@ namespace MachineLearningSpectralFittingCode
         public static float[] t { get; set; }
         public static float[] Z { get; set; }
         public static float[] s { get; set; }
-        public static float[] wavelength { get; set; }
+        public static Vector wavelength { get; set; }
         public static float[,,,] fluxgrid { get; set; } // Line 326-329 - firefly models
 
 
@@ -112,7 +110,7 @@ namespace MachineLearningSpectralFittingCode
         //
         public static float slope { get; set; } = 0f;
         public static int sidx { get; set; } = 0;
-        public static float[] sres { get; set; }
+        public static Vector sres { get; set; }
 
         // Dust Maps
         public static float[,] ngp_dust { get; set; }

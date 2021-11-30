@@ -1,16 +1,17 @@
-﻿using ILGPU;
+﻿using BAVCL;
+using ILGPU;
 using ILGPU.Algorithms;
 using ILGPU.Runtime;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 
-namespace MachineLearningSpectralFittingCode
+namespace FALCON
 {
     class Spectral_resolution
     {
         // Constructor
-        public Spectral_resolution(Accelerator gpu, float[] wave_in, float[] sres_in, bool log10_in = false, string interp_ext_in = "extrapolate")
+        public Spectral_resolution(GPU gpu, Vector wave_in, Vector sres_in, bool log10_in = false, string interp_ext_in = "extrapolate")
         {
             this.gpu = gpu;
 
@@ -20,7 +21,7 @@ namespace MachineLearningSpectralFittingCode
                 throw new Exception("wave_in and sres_in must be of equal length");
             }
 
-            this.interpolator = new LinearInterpolation(wave_in, sres_in); // k = 1, and extrapolate 
+            this.interpolator = new LinearInterpolation(wave_in.Pull(), sres_in.Pull()); // k = 1, and extrapolate 
 
             this.log10 = log10_in;
 
@@ -31,7 +32,7 @@ namespace MachineLearningSpectralFittingCode
             }
 
             // If log10_in is false
-            this.dw = wave_in[1] - wave_in[0];
+            this.dw = wave_in.Value[1] - wave_in.Value[0];
 
             // min_sig, sig_pd, sig_mask, sig_vo = NONE
 
@@ -39,7 +40,7 @@ namespace MachineLearningSpectralFittingCode
 
 
         // Variable Block
-        Accelerator gpu;
+        GPU gpu;
         protected bool log10 { get; private set; }
         protected float dv { get; private set; }
         protected float dw { get; private set; }
@@ -50,21 +51,25 @@ namespace MachineLearningSpectralFittingCode
         public LinearInterpolation interpolator { get; set; }
         protected float min_sig { get; set; }
         public float sig_vo { get; set; }
-        public float[] sig_pd { get; set; }
+        public Vector sig_pd { get; set; }
         public bool[] sig_mask { get; set; }
 
 
         // Methods
-        private float spectrum_velocity_scale(float[] wave)
+        private float spectrum_velocity_scale(Vector wave)
         {
             return Constants.c_kms * this.spectral_coordinate_step(wave, log: true, _base: MathF.E);
         }
 
-        private float spectral_coordinate_step(float[] wave, bool log = false, float _base = 10f)
+        private float spectral_coordinate_step(Vector wave, bool log = false, float _base = 10f)
         {
             if (_base == MathF.E && log)
             {
-                return Vector.Diff_Log(gpu, new Vector(wave)).Value.Average();
+                wave.SyncCPU();
+                Vector wave_1 = new Vector(gpu, wave.Value[1..]);
+                Vector wave_2 = new Vector(gpu, wave.Value[..^1]);
+
+                return (wave_1.Log_IP(_base) - wave_2.Log_IP(_base)).Mean();
             }
 
             if (log)
@@ -74,8 +79,10 @@ namespace MachineLearningSpectralFittingCode
 
 
             // If log is false
-            return Vector.Diff(gpu, new Vector(wave)).Value.Average();
+            return Vector.Diff(wave).Mean();
         }
+
+
 
         public void match(Spectral_resolution new_sres, bool no_offset = true, float min_sig_pix = 0f)
         {
@@ -86,17 +93,17 @@ namespace MachineLearningSpectralFittingCode
         {
             this.min_sig = min_sig_pix;
 
-            float[] _wave = this.interpolator.X;
-            float[] _sres = this.interpolator.Y;
+            Vector _wave = new Vector(gpu, this.interpolator.X);
+            Vector _sres = new Vector(gpu, this.interpolator.Y);
 
-            float[] interp_sres = new float[_wave.Length];
+            Vector interp_sres = new Vector(gpu,new float[_wave.Length],1, false);
 
             // This could be slow??
             for (int i = 0; i < _wave.Length; i++)
             {
-                interp_sres[i] = new_sres.interpolator.Interpolate(_wave[i]);
+                interp_sres.Value[i] = new_sres.interpolator.Interpolate(_wave.Value[i]);
             }
-            
+            interp_sres.UpdateCache();
 
             // Issue?
 
@@ -112,7 +119,7 @@ namespace MachineLearningSpectralFittingCode
             //    sig2_vd[i] = MathF.Pow(Constants.c_kms / _wave[i],2f) * sig2_wd[i];
             //}
 
-            float[] sig2_vd = DetermineVariance(_wave, interp_sres, _sres);
+            Vector sig2_vd = DetermineVariance(_wave, interp_sres, _sres);
 
 
             // OPTION 1
@@ -122,12 +129,12 @@ namespace MachineLearningSpectralFittingCode
 
                 if (log10)
                 {
-                    // ISSUE - dv is waaaay off Supposed to be 69.02976392336477
-                    this.finalize_GaussianKernelDifference(Vector.ScalarOperation(gpu, new Vector(sig2_vd), MathF.Pow(this.dv, 2f), "/").Value);
+                    // ISSUE - dv is Supposed to be 69.02976392336477
+                    finalize_GaussianKernelDifference(sig2_vd * XMath.Rcp(this.dv * this.dv));
                     return;
                 }
 
-                this.finalize_GaussianKernelDifference(Vector.ScalarOperation(gpu, new Vector(sig2_vd), MathF.Pow(this.dw, 2f), "/").Value);
+                finalize_GaussianKernelDifference(sig2_vd * XMath.Rcp(this.dw * this.dw));
                 return;
             }
 
@@ -144,7 +151,7 @@ namespace MachineLearningSpectralFittingCode
 
             if (this.sig_vo > 0f)
             {
-                sig2_vd = Vector.ScalarOperation(gpu, new Vector(sig2_vd), this.sig_vo, "+").Value;
+                sig2_vd = sig2_vd + this.sig_vo;
                 this.sig_vo = MathF.Sqrt(this.sig_vo);
             }
             else
@@ -153,41 +160,35 @@ namespace MachineLearningSpectralFittingCode
             }
 
 
-            float[] sig2_pd = this.convert_vd2pd(sig2_vd, _wave);
-            this.finalize_GaussianKernelDifference(sig2_pd);
+            Vector sig2_pd = this.convert_vd2pd(sig2_vd, _wave);
+            finalize_GaussianKernelDifference(sig2_pd);
         }
-        private float[] DetermineVariance(float[] wave, float[] interp_sres, float[] sres)
+        private Vector DetermineVariance(Vector wave, Vector interp_sres, Vector sres)
         {
-            AcceleratorStream stream = gpu.CreateStream();
+            Vector output = new Vector(gpu, new float[wave.Length]);
+            output.IncrementLiveCount();
 
-            var kernelWithStream = gpu.LoadAutoGroupedKernel<Index1, ArrayView<float>, ArrayView<float>, ArrayView<float>, ArrayView<float>, float, float>(DetermineVarianceKernel);
+            wave.IncrementLiveCount();
+            interp_sres.IncrementLiveCount();
+            sres.IncrementLiveCount();
 
-            MemoryBuffer<float> buffer = gpu.Allocate<float>(wave.Length); // Output
-            MemoryBuffer<float> buffer2 = gpu.Allocate<float>(wave.Length); //  Input
-            MemoryBuffer<float> buffer3 = gpu.Allocate<float>(interp_sres.Length); //  Input
-            MemoryBuffer<float> buffer4 = gpu.Allocate<float>(sres.Length); //  Input
+            var kernelWithStream = gpu.accelerator.LoadAutoGroupedKernel<Index1, ArrayView<float>, ArrayView<float>, ArrayView<float>, ArrayView<float>, float, float>(DetermineVarianceKernel);
 
-            buffer.MemSetToZero(stream);
-            buffer2.MemSetToZero(stream);
-            buffer3.MemSetToZero(stream);
-            buffer4.MemSetToZero(stream);
+            MemoryBuffer<float> outBuffer = output.GetBuffer(); // Output
+            MemoryBuffer<float> waveBuffer = wave.GetBuffer(); //  Input
+            MemoryBuffer<float> interpsresBuffer = interp_sres.GetBuffer(); //  Input
+            MemoryBuffer<float> sresbuffer = sres.GetBuffer(); //  Input
 
-            buffer2.CopyFrom(stream, wave, 0, 0, wave.Length);
-            buffer3.CopyFrom(stream, interp_sres, 0, 0, interp_sres.Length);
-            buffer4.CopyFrom(stream, sres, 0, 0, sres.Length);
+            kernelWithStream(gpu.accelerator.DefaultStream, outBuffer.Length, outBuffer.View, waveBuffer.View, interpsresBuffer.View, sresbuffer.View, Constants.sig2FWHM, Constants.c_kms);
 
-            kernelWithStream(stream, buffer.Length, buffer.View, buffer2.View, buffer3.View, buffer4.View, Constants.sig2FWHM, Constants.c_kms);
+            gpu.accelerator.Synchronize();
 
-            stream.Synchronize();
+            wave.DecrementLiveCount();
+            interp_sres.DecrementLiveCount();
+            sres.DecrementLiveCount();
+            output.DecrementLiveCount();
 
-            float[] Output = buffer.GetAsArray(stream);
-
-            buffer.Dispose();
-            buffer2.Dispose();
-
-            stream.Dispose();
-
-            return Output;
+            return output;
         }
         static void DetermineVarianceKernel(Index1 index, ArrayView<float> Output, ArrayView<float> wave,
             ArrayView<float> interp_sres, ArrayView<float> sres, float fwhm, float c)
@@ -196,26 +197,21 @@ namespace MachineLearningSpectralFittingCode
                 (1f / XMath.Pow(interp_sres[index], 2f) - 1f / XMath.Pow(sres[index], 2f));
         }
 
-        private float[] convert_vd2pd(float[] sig2_vd, float[] wave)
+        private Vector convert_vd2pd(Vector sig2_vd, Vector wave)
         {
             if (this.log10)
             {
-                return Vector.ScalarOperation(gpu, new Vector(sig2_vd), MathF.Pow(this.dv, -2f), "*").Value;
+                return sig2_vd * MathF.Pow(this.dv, -2f);
             }
 
-            float inv_cdw_squ = 1f / MathF.Pow(Constants.c_kms * this.dw, 2f);
-            float[] Output = new float[sig2_vd.Length];
-            for (int i = 0; i < Output.Length; i++)
-            {
-                Output[i] = sig2_vd[i] * wave[i] * wave[i] * inv_cdw_squ;
-            }
+            float inv_cdw_squ = XMath.Rcp(Constants.c_kms * Constants.c_kms * this.dw * this.dw);
 
-            return Output;
+            return (wave * wave).OP_IP(sig2_vd, Operations.multiply).OP_IP(inv_cdw_squ, Operations.multiply);
         }
 
-        private void finalize_GaussianKernelDifference(float[] sig2_pd)
+        private void finalize_GaussianKernelDifference(Vector sig2_pd)
         {
-            int[] indx = UtilityMethods.WhereIsClose(sig2_pd, 0f);
+            int[] indx = UtilityMethods.WhereIsClose(sig2_pd.Pull(), 0f);
             int[] nindx = UtilityMethods.WhereNot(indx, sig2_pd.Length);
 
             // ISSUE - ALL INF
@@ -244,15 +240,16 @@ namespace MachineLearningSpectralFittingCode
             
             float sig2fwhm_by_c_sq = MathF.Pow(Constants.sig2FWHM / Constants.c_kms, 2f);
             float[] output;
-            float[] pd2vd;
+            Vector pd2vd;
             if (indxs.Length == 0)
             {
                 output = new float[this.sig_pd.Length];
-                pd2vd = convert_pd2vd(Vector.Power(gpu, new Vector(this.sig_pd), true).Value);
+
+                pd2vd = convert_pd2vd((+this.sig_pd).OP_IP(this.sig_pd, Operations.multiply));
 
                 for (int i = 0; i < output.Length; i++)
                 {
-                    output[i] = 1f / MathF.Sqrt(sig2fwhm_by_c_sq * pd2vd[i]
+                    output[i] = 1f / MathF.Sqrt(sig2fwhm_by_c_sq * pd2vd.Value[i]
                          + 1f / MathF.Pow(this.interpolator.Y[i], 2f) );
                 }
 
@@ -260,13 +257,14 @@ namespace MachineLearningSpectralFittingCode
             }
 
             output = new float[indxs.Length];
-            float[] selected_sig = new float[indxs.Length];
+            Vector selected_sig = new Vector(gpu,new float[indxs.Length],1, false);
             float[] selected_sres = new float[indxs.Length];
             for (int i = 0; i < output.Length; i++)
             {
-                selected_sig[i] = this.sig_pd[indxs[i]] * MathF.Abs(this.sig_pd[indxs[i]]);
+                selected_sig.Value[i] = this.sig_pd[indxs[i]] * MathF.Abs(this.sig_pd[indxs[i]]);
                 selected_sres[i] = 1f / MathF.Pow(this.interpolator.Y[indxs[i]], 2f);
             }
+            selected_sig.SyncCPU();
 
             pd2vd = convert_pd2vd(selected_sig);
             for (int i = 0; i < output.Length; i++)
@@ -277,19 +275,18 @@ namespace MachineLearningSpectralFittingCode
             return output;
         }
 
-        private float[] convert_pd2vd(float[] sig2_pd)
+        private Vector convert_pd2vd(Vector sig2_pd)
         {
             if (log10)
             {
-                return Vector.ScalarOperation(gpu, new Vector(sig2_pd), MathF.Pow(this.dv, 2f), "*").Value;
+                return sig2_pd * (this.dv * this.dv);
             }
 
-
-            float[] sig_sq_cdw = Vector.ScalarOperation(gpu, new Vector(sig2_pd), MathF.Pow(Constants.c_kms * this.dw, 2f), "*").Value;
-            float[] output = new float[sig_sq_cdw.Length];
+            Vector output = sig2_pd * (Constants.c_kms * Constants.c_kms * this.dw * this.dw);
+            output.SyncCPU();
             for (int i = 0; i < output.Length; i++)
             {
-                output[i] = sig_sq_cdw[i] / (this.interpolator.X[i] * this.interpolator.X[i]);
+                output.Value[i] = output.Value[i] * XMath.Rcp(this.interpolator.X[i] * this.interpolator.X[i]);
             }
 
             return output;
@@ -300,8 +297,9 @@ namespace MachineLearningSpectralFittingCode
 
     class VariableGaussianKernel
     {
-        public VariableGaussianKernel(Accelerator gpu, float[] sigma, float minsig=0.01f,int nsig=3, bool integral=false)
+        public VariableGaussianKernel(GPU gpu, float[] sigma, float minsig=0.01f,int nsig=3, bool integral=false)
         {
+            this.gpu = gpu;
             this.n = sigma.Length;
             //this.sigma = (from sig in sigma
             //              select Math.Clamp(sig, minsig, sigma.Max())).ToArray();
@@ -321,7 +319,7 @@ namespace MachineLearningSpectralFittingCode
 
             if (!integral)
             {
-                this.kernel = kernCalculation(gpu, x2, this.sigma);
+                this.kernel = kernCalculation(gpu, new Vector(gpu,x2), new Vector(gpu,this.sigma));
             }
             else
             {
@@ -335,9 +333,9 @@ namespace MachineLearningSpectralFittingCode
         private int p { get; set; }
         private int m { get; set; }
         private Vector kernel { get; set; }
+        private GPU gpu;
 
-
-        public float[] Convolve(Accelerator gpu, float[] y) //ye=None
+        public Vector Convolve(GPU gpu, Vector y) //ye=None
         {
             if (y.Length != this.n)
             {
@@ -346,12 +344,12 @@ namespace MachineLearningSpectralFittingCode
 
             // assume ye is None
             // if ye = None
-            Vector a = this.Create_a(y);
+            Vector a = this.Create_a(y.Pull());
             Vector result = Vector.MultiplySumAxZero(gpu, a, this.kernel); // PRECISION MAY NEED TO USE DOUBLES
 
             // else ae = create_a(ye**2) { return sum(a* (this.kernel,axis=0)), sqrt(sum(ae*(this.kernel, axis=0)))}
 
-            return result.Value;
+            return result;
         }
 
         private Vector Create_a(float[] y)
@@ -366,44 +364,35 @@ namespace MachineLearningSpectralFittingCode
                 a.AddRange(new float[p]);
             }
 
-            return new Vector(a.ToArray(), this.kernel.Columns);
+            return new Vector(gpu, a.ToArray(), this.kernel.Columns);
         }
 
-        private Vector kernCalculation(Accelerator gpu, float[] x2, float[] sigma)
+        private Vector kernCalculation(GPU gpu, Vector x2, Vector sigma)
         {
 
-            AcceleratorStream Stream = gpu.CreateStream();
+            x2.IncrementLiveCount();
+            sigma.IncrementLiveCount();
 
-            var buffer = gpu.Allocate<float>(x2.Length * sigma.Length); // OUTPUT
-            var buffer2 = gpu.Allocate<float>(x2.Length); // INPUT
-            var buffer3 = gpu.Allocate<float>(sigma.Length); // INPUT
-
-
-            buffer.MemSetToZero(Stream);
-            buffer2.MemSetToZero(Stream);
-            buffer3.MemSetToZero(Stream);
+            Vector output = new Vector(gpu, new float[x2.Length * sigma.Length], sigma.Length);
+            output.IncrementLiveCount();
 
 
-            buffer2.CopyFrom(Stream, x2, 0, 0, x2.Length);
-            buffer3.CopyFrom(Stream, sigma, 0, 0, sigma.Length);
+            var buffer = output.GetBuffer();    // OUTPUT
+            var buffer2 = x2.GetBuffer();       // INPUT
+            var buffer3 = sigma.GetBuffer();    // INPUT
 
+            var kernelWithStream = gpu.accelerator.LoadAutoGroupedKernel<Index1, ArrayView<float>, ArrayView<float>, ArrayView<float>>(kernCalcKERNEL);
+            kernelWithStream(gpu.accelerator.DefaultStream, buffer3.Length, buffer.View, buffer2.View, buffer3.View);
 
-            var kernelWithStream = gpu.LoadAutoGroupedKernel<Index1, ArrayView<float>, ArrayView<float>, ArrayView<float>>(kernCalcKERNEL);
+            gpu.accelerator.Synchronize();
 
-            kernelWithStream(Stream, buffer3.Length, buffer.View, buffer2.View, buffer3.View);
+            x2.DecrementLiveCount();
+            sigma.DecrementLiveCount();
+            output.DecrementLiveCount();
 
-            Stream.Synchronize();
-
-            float[] Output = buffer.GetAsArray(Stream);
-
-            buffer.Dispose();
-            buffer2.Dispose();
-            buffer3.Dispose();
-
-            Stream.Dispose();
-
-            return new Vector(Output, sigma.Length);
+            return output;
         }
+
         static void kernCalcKERNEL(Index1 index, ArrayView<float> output, ArrayView<float> x2, ArrayView<float> sig)
         {
 

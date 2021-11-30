@@ -2,36 +2,31 @@
 using ILGPU.Runtime;
 using System;
 using System.IO;
-using System.Collections.Generic;
 using System.Threading.Tasks;
-using HDF5CSharp;
-using System.Linq;
+using BAVCL;
 
 
-namespace MachineLearningSpectralFittingCode
+namespace FALCON
 {
     class Program
     {
         // Singleton Instances
         public static Config config;
         public static Cosmology cosmology;
-        public static string PathOfProgram = AppDomain.CurrentDomain.BaseDirectory; //"C:/Users/Marcelpaw/source/repos/MachineLearningSpectralFittingCode/";
+        public static string PathOfProgram = AppDomain.CurrentDomain.BaseDirectory; //"C:/Users/Marcelpaw/source/repos/FALCON/";
 
         static void Main()
         {
             // Variable BLOCK
-            Context context = new Context();
-            context.EnableAlgorithms();
-            Accelerator gpu;
+            GPU gpu = new GPU();
 
             config = new Config();
-            gpu = config.GetHardware(context);
-
             cosmology = new Cosmology();
+
             cosmology.Initialise();
 
             //UI UserInterface = new UI(config);
-            config.Setup(gpu);
+            config.Setup();
 
             //string Data_path = PathOfProgram + @"\Data\spec-0266-51602-0001.dat";
 
@@ -59,16 +54,20 @@ namespace MachineLearningSpectralFittingCode
             float[] ra = new float[files.Length];
             float[] dec = new float[files.Length];
 
-            Parallel.For(0, files.Length, i =>
+            //Parallel.For(0, files.Length, i =>
+            //{
+            for (int i = 0; i < files.Length; i++)
             {
                 (Wavelength[i], Flux[i], Error[i], redshift[i], vdisp[i], ra[i], dec[i]) = UtilityMethods.ReadDataFits(gpu, files[i]);
 
                 Spectral_Model spectral_Model = new Spectral_Model(files[i], config.Milky_Way_Reddening, config.HPF_Mode, config.N_Masked_Amstrongs, gpu);
-                spectral_Model.InitialiseSpectraParameters(Wavelength[i], Flux[i], Error[i], redshift[i], new float[2] { ra[i], dec[i] }, vdisp[i], config.Instrument_Resolution);
+                //spectral_Model.InitialiseSpectraParameters(Wavelength[i], Flux[i], Error[i], redshift[i], new float[2] { ra[i], dec[i] }, vdisp[i], config.Instrument_Resolution);
 
-                spectral_Model.Fit_models_to_data();
+                //spectral_Model.Fit_models_to_data();
+            }
+                
 
-            });
+            //});
 
             //Console.WriteLine($"File : {files[2]}\n");
 

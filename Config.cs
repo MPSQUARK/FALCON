@@ -10,7 +10,7 @@ using System.IO;// Uninstall later when system analytics unnessessary
 
 using HDF5CSharp;
 
-namespace MachineLearningSpectralFittingCode
+namespace FALCON
 {
     public class Config
     {
@@ -187,11 +187,11 @@ namespace MachineLearningSpectralFittingCode
 
 
         // SETUP
-        public void Setup(Accelerator gpu)
+        public void Setup()
         {
             GetModelData();
             GetDustData();
-            PreInitialiseDownGrade(gpu);
+            PreInitialiseDownGrade();
         }
 
         // CONFIG PRE-INITIALISE DATA
@@ -290,18 +290,17 @@ namespace MachineLearningSpectralFittingCode
         /// <summary>
         /// Computes the Data Invariant section of DownGrade Function Outputting sres
         /// </summary>
-        private void PreInitialiseDownGrade(Accelerator gpu)
+        private void PreInitialiseDownGrade()
         {
 
             if (Constants.r_model.Length == 1)
             {
-                double[] sres_D = Vector.ScalarOperation(gpu, new Vector(Constants.wavelength), (1d / Constants.r_model[0]), '*');
                 
-                Constants.sres = new float[sres_D.Length];
+                Constants.sres = new float[Constants.wavelength.Length];
 
                 for (int i = 0; i < Constants.r_model.Length; i++)
                 {
-                    Constants.sres[i] = (float)sres_D[i];
+                    Constants.sres[i] = (float)(Constants.wavelength[i] * (1f / Constants.r_model[0]));
                 }
                 return;
             }

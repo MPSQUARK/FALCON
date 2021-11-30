@@ -1,9 +1,14 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
-# Visual Studio Version 16
-VisualStudioVersion = 16.0.30114.105
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31912.275
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "MachineLearningSpectralFittingCode", "MachineLearningSpectralFittingCode.csproj", "{57F362C2-16B2-417D-B5AB-5952F4A427CA}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "FALCON", "FALCON.csproj", "{57F362C2-16B2-417D-B5AB-5952F4A427CA}"
+	ProjectSection(ProjectDependencies) = postProject
+		{C2FE9D1C-ACB7-4E5F-8F64-B8636491AB7A} = {C2FE9D1C-ACB7-4E5F-8F64-B8636491AB7A}
+	EndProjectSection
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "DataScience", "..\DataScience\DataScience\DataScience.csproj", "{C2FE9D1C-ACB7-4E5F-8F64-B8636491AB7A}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -21,6 +26,14 @@ Global
 		{57F362C2-16B2-417D-B5AB-5952F4A427CA}.Release|Any CPU.Build.0 = Release|Any CPU
 		{57F362C2-16B2-417D-B5AB-5952F4A427CA}.Release|x64.ActiveCfg = Release|x64
 		{57F362C2-16B2-417D-B5AB-5952F4A427CA}.Release|x64.Build.0 = Release|x64
+		{C2FE9D1C-ACB7-4E5F-8F64-B8636491AB7A}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{C2FE9D1C-ACB7-4E5F-8F64-B8636491AB7A}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{C2FE9D1C-ACB7-4E5F-8F64-B8636491AB7A}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{C2FE9D1C-ACB7-4E5F-8F64-B8636491AB7A}.Debug|x64.Build.0 = Debug|Any CPU
+		{C2FE9D1C-ACB7-4E5F-8F64-B8636491AB7A}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{C2FE9D1C-ACB7-4E5F-8F64-B8636491AB7A}.Release|Any CPU.Build.0 = Release|Any CPU
+		{C2FE9D1C-ACB7-4E5F-8F64-B8636491AB7A}.Release|x64.ActiveCfg = Release|Any CPU
+		{C2FE9D1C-ACB7-4E5F-8F64-B8636491AB7A}.Release|x64.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

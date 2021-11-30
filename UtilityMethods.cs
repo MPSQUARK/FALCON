@@ -3,11 +3,13 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text.RegularExpressions;
+using BAVCL;
 using ILGPU.Runtime;
 using nom.tam.fits;
+using nom.tam.util;
 
 
-namespace MachineLearningSpectralFittingCode
+namespace FALCON
 {
     public class UtilityMethods
     {
@@ -28,24 +30,31 @@ namespace MachineLearningSpectralFittingCode
             return Data;
         }
 
-        public static (Vector, Vector, Vector, float, float, float, float) ReadDataFits(Accelerator gpu, string path)
+        public static (Vector, Vector, Vector, float, float, float, float) ReadDataFits(GPU gpu, string path)
         {
-            //string path = @"C:\Users\marce\source\repos\MachineLearningSpectralFittingCode\Data\";
+            //string path = @"C:\Users\marce\source\repos\FALCON\Data\";
             //string spec = "0266 -51630-0034";
             Fits f = new Fits(path);
             BasicHDU hdu = f.GetHDU(2);
-            nom.tam.util.ColumnTable table = (nom.tam.util.ColumnTable)hdu.Data.DataArray;
+            ColumnTable table = (ColumnTable)hdu.Data.DataArray;
             float redshift = ((float[])table.GetColumn(63))[0];
             float vdisp = ((float[])table.GetColumn(72))[0];
 
             hdu = f.GetHDU(1);
             table = (nom.tam.util.ColumnTable)hdu.Data.DataArray;
-            
-            Vector wavelength = Vector.TenToPowerVector(gpu, (float[])table.GetColumn(1));
 
-            Vector flux = new Vector((float[])table.GetColumn(0), 1);
+            Vector wavelength = new Vector(gpu, (float[])table.GetColumn(1)).OP_IP(10f, Operations.flipPow);
 
-            Vector error = Vector.InvSqrt(gpu, (float[])table.GetColumn(2));
+            Vector flux = new Vector(gpu, (float[])table.GetColumn(0));
+
+            Vector error = new Vector(gpu, (float[])table.GetColumn(2)).RsqrtX_IP();
+
+
+            //Vector wavelength = Vector.TenToPowerVector(gpu, (float[])table.GetColumn(1));
+
+            //Vector flux = new Vector((float[])table.GetColumn(0), 1);
+
+            //Vector error = Vector.InvSqrt(gpu, (float[])table.GetColumn(2));
 
 
             hdu = f.GetHDU(0);
@@ -67,6 +76,11 @@ namespace MachineLearningSpectralFittingCode
         public static float Mpc2cm(float Mpc)
         {
             return 3.08567758128e+24f * Mpc;
+        }
+
+        public static Vector Mpc2cm(Vector vector)
+        {
+            return vector * 3.08567758128e+24f;
         }
 
         public static float Median(float[] array)

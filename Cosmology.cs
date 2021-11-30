@@ -6,8 +6,9 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using BAVCL;
 
-namespace MachineLearningSpectralFittingCode
+namespace FALCON
 {
     public class Cosmology
     {
@@ -253,21 +254,21 @@ namespace MachineLearningSpectralFittingCode
 
         }
 
-        public float luminosity_distance(Accelerator gpu, float redshift)
+        public float luminosity_distance(GPU gpu, float redshift)
         {
             return (1f + redshift) * comoving_transverse_distance(gpu, redshift);
         }
 
-        public float comoving_transverse_distance(Accelerator gpu, float redshift)
+        public float comoving_transverse_distance(GPU gpu, float redshift)
         {
             float dc = integral_comoving_distance(gpu, redshift);
             return dc;
         }
 
-        public float integral_comoving_distance(Accelerator gpu, float redshift)
+        public float integral_comoving_distance(GPU gpu, float redshift)
         {
 
-            return this.hubble_distance * GPU_Integration(gpu, redshift, 1e-8f, this.inv_efunc_scalar_args);
+            return this.hubble_distance * GPU_Integration(gpu, redshift, 1e-8f);
 
         }
 
@@ -286,83 +287,49 @@ namespace MachineLearningSpectralFittingCode
         }
 
 
-        // Integrates the cosmology func to get luminosity distance
-        private float GPU_Integration(Accelerator gpu, float z, float dz, inv_efunc_scalar_args_struct args)
-        {
-            int length = (int)(z / dz);
+        //// Integrates the cosmology func to get luminosity distance 
+        //public float GPU_Integration(Accelerator gpu, float z, float dz)
+        //{
+        //    int length = (int)(z / dz);
 
-            AcceleratorStream Stream = gpu.CreateStream();
+        //    AcceleratorStream Stream = gpu.CreateStream();
 
-            var kernelWithStream = gpu.LoadAutoGroupedKernel<Index1, ArrayView<float>, float, float, float, float, float, float, float>(GPU_IntegrationKernal);
+        //    var kernelWithStream = gpu.LoadAutoGroupedKernel<Index1, ArrayView<float>, float, float, float, float, float, float, float>(GPU_IntegrationKernal);
 
-            var buffer = gpu.Allocate<float>(length);
-            buffer.MemSetToZero(Stream);
+        //    var buffer = gpu.Allocate<float>(length);
+        //    buffer.MemSetToZero(Stream);
 
-            kernelWithStream(Stream, buffer.Length, buffer.View, dz, args.Ogamma0, args.Om0, args.Ode0, args.neff_per_nu, args.nmasslessnu, args.nu_y[0]);
+        //    kernelWithStream(Stream, buffer.Length, buffer.View, dz, (float)this.Ogamma0, this.Om0, this.Ode0, this.neff_per_nu, this.nmasslessnu, this.nu_y[0]);
 
-            Stream.Synchronize();
+        //    Stream.Synchronize();
 
-            float[] Output = buffer.GetAsArray(Stream);
+        //    float[] Output = buffer.GetAsArray(Stream);
 
-            buffer.Dispose();
+        //    buffer.Dispose();
 
-            Stream.Dispose();
+        //    Stream.Dispose();
 
-            return Output.Sum();
-        }
-
-        // Integrates the cosmology func to get luminosity distance Asynchronously
-        public async Task<float> GPU_IntegrationAsync(Accelerator gpu, float z, float dz)
-        {
-            int length = (int)(z / dz);
-
-            AcceleratorStream Stream = gpu.CreateStream();
-
-            var kernelWithStream = gpu.LoadAutoGroupedKernel<Index1, ArrayView<float>, float, float, float, float, float, float, float>(GPU_IntegrationKernal);
-
-            var buffer = gpu.Allocate<float>(length);
-            buffer.MemSetToZero(Stream);
-
-            kernelWithStream(Stream, buffer.Length, buffer.View, dz, (float)this.Ogamma0, this.Om0, this.Ode0, this.neff_per_nu, this.nmasslessnu, this.nu_y[0]);
-
-            Stream.Synchronize();
-
-            float[] Output = buffer.GetAsArray(Stream);
-
-            buffer.Dispose();
-
-            Stream.Dispose();
-
-            return (1f + z) * this.hubble_distance * Output.Sum();
-        }
+        //    return (1f + z) * this.hubble_distance * Output.Sum();
+        //}
 
 
         // Integrates the cosmology func to get luminosity distance Asynchronously
-        public async Task<float> GPU_IntegrationOptiAsync(Accelerator gpu, float z, float dz)
+        public float GPU_Integration(GPU gpu, float z, float dz)
         {
-            int length = (int)(z / dz);
+            Vector opz = Vector.Linspace(gpu, 1, z, (int)(z / dz));
+            opz.IncrementLiveCount();
+            MemoryBuffer<float> opzBuffer = opz.GetBuffer();
 
-            AcceleratorStream Stream = gpu.CreateStream();
+            var kernel = gpu.accelerator.LoadAutoGroupedKernel<Index1, ArrayView<float>, float, float, float, float, float, float, float>(GPU_IntegrationKernal);
+            kernel(gpu.accelerator.DefaultStream, opzBuffer.Length, opzBuffer.View, dz, (float)this.Ogamma0, this.Om0, this.Ode0, this.neff_per_nu, this.nmasslessnu, this.nu_y[0]);
+            gpu.accelerator.Synchronize();
 
-            var kernelWithStream = gpu.LoadAutoGroupedKernel<Index1, ArrayView<float>, float, float, float, float, float, float, float>(GPU_IntegrationOptiKernal);
+            float sum = opz.Sum();
 
-            var buffer = gpu.Allocate<float>(length);
-            buffer.MemSetToZero(Stream);
+            opz.DecrementLiveCount();
 
-            kernelWithStream(Stream, buffer.Length, buffer.View, dz, this.Om0, this.Ode0, this.nmasslessnu, this.Or0_OptiA, this.Or0_OptiB, this.nuyp_Opti);
-
-            Stream.Synchronize();
-
-            float[] Output = buffer.GetAsArray(Stream);
-
-            buffer.Dispose();
-
-            Stream.Dispose();
-
-            return (1f + z) * this.hubble_distance * Output.Sum();
+            return (1f + z) * this.hubble_distance * sum;
         }
-
-
 
 
         // KERNELS
@@ -373,16 +340,6 @@ namespace MachineLearningSpectralFittingCode
             float Or0 = (Ogamma0 * (1f + 0.22710731766f * neff_per_nu * (nmasslessnu + XMath.Pow(1f + XMath.Pow(k * nu_y, 1.83f), 0.54644808743f))));
 
             OutPut[index] = XMath.Rsqrt(XMath.Pow(opz, 3f) * (opz * Or0 + Om0) + Ode0) * dz; 
-        }
-
-        static void GPU_IntegrationOptiKernal(Index1 index, ArrayView<float> OutPut, float dz, float Om0, float Ode0, float nmasslessnu, float Or0_OptiA, float Or0_OptiB, float nu_yp)
-        {
-            float opz = 1f + (dz * index);
-            float k = 0.3173f / opz;
-
-            float Or0 = Or0_OptiA + Or0_OptiB * XMath.Pow(1f + XMath.Pow(k, 1.83f) * nu_yp, 0.54644808743f);
-
-            OutPut[index] = XMath.Rsqrt(XMath.Pow(opz, 3f) * (opz * Or0 + Om0) + Ode0) * dz;
         }
 
     }

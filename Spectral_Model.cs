@@ -7,8 +7,10 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using BAVCL;
+using System.Runtime.CompilerServices;
 
-namespace MachineLearningSpectralFittingCode
+namespace FALCON
 {
     class Spectral_Model
     {
@@ -16,7 +18,7 @@ namespace MachineLearningSpectralFittingCode
                        bool milky_Way_Reddening = true, // SHOULD BE TRUE
                        bool hPF_Mode = true,
                        ushort n_Masked_Amstrongs = 20,
-                       Accelerator GPU = null)
+                       GPU GPU = null)
         {
             this.Path = path;
             this.Milky_Way_Reddening = milky_Way_Reddening;
@@ -25,7 +27,7 @@ namespace MachineLearningSpectralFittingCode
             this.gpu = GPU;
         }
 
-        Accelerator gpu;
+        GPU gpu;
 
         // SPECTRA SPECIFIC VARIABLES
         #region
@@ -74,7 +76,7 @@ namespace MachineLearningSpectralFittingCode
         /// <summary>
         /// MODEL wavelengths
         /// </summary>
-        public float[] Model_wavelength;
+        public Vector Model_wavelength;
         /// <summary>
         /// MODEL FLUXES - List of MODEL FLUXES
         /// </summary>
@@ -94,49 +96,12 @@ namespace MachineLearningSpectralFittingCode
         #endregion
 
         // Spectrum Initialisation
-        public async void InitialiseSpectraParameters(Vector Data, float Redshift, float[] RA_DEC, float Velocity_Disp, float instrument_resolution) // also include emission lines masking
+        public void InitialiseSpectraParameters(BAVCL.Vector Data, float Redshift, float[] RA_DEC, float Velocity_Disp, float instrument_resolution) // also include emission lines masking
         {
-            bool warn = false;
 
-        retryWave:
-            try
-            {
-                // Set Long tasks to execute
-                this.Wavelength = await Vector.AccessSliceAsync(gpu, Data, 0, 'c');  // WAVELENGTH
-            }
-            catch (Exception)
-            {
-                warn = true;
-                await Task.Delay(50);
-                goto retryWave;
-            }
-
-        retryFlux:
-            try
-            {
-                // Set Long tasks to execute
-                this.Flux = Vector.AccessSlice(gpu, Data, 1, 'c');  // FLUX
-            }
-            catch (Exception)
-            {
-                warn = true;
-                await Task.Delay(50);
-                goto retryFlux;
-            }
-
-        retryErr:
-            try
-            {
-                // Set Long tasks to execute
-                this.Error = await Vector.AccessSliceAsync(gpu, Data, 2, 'c');  // ERROR
-            }
-            catch (Exception)
-            {
-                warn = true;
-                await Task.Delay(50);
-                goto retryErr;
-            }
-
+            this.Wavelength = Data.GetColumnAsVector(0);
+            this.Flux = Data.GetColumnAsVector(1);
+            this.Error = Data.GetColumnAsVector(2);
 
             this.Redshift = Redshift;
             this.RA_DEC = RA_DEC;
@@ -144,19 +109,7 @@ namespace MachineLearningSpectralFittingCode
             this.Trust_Flag = 1;
             this.ObjID = 0;
 
-
-        retryInstru:
-            try
-            {
-                this.Instrument_Resolution = Vector.Fill(instrument_resolution, this.Wavelength.Value.Length);
-            }
-            catch (Exception)
-            {
-                warn = true;
-                await Task.Delay(50);
-                goto retryInstru;
-            }
-
+            this.Instrument_Resolution = Vector.Fill(gpu, instrument_resolution, this.Wavelength.Value.Length);
 
             if (this.Milky_Way_Reddening)
             {
@@ -167,76 +120,33 @@ namespace MachineLearningSpectralFittingCode
                 this.ebv_MW = 0f;
             }
 
+            this.Restframe_Wavelength = this.Wavelength * (1 / (1 + this.Redshift));
 
-        retryRestWave:
-            try
+            // Generates the Filter Mask 2 Remove Bad data from the spectrum
+            Vector BadDataMask = this.GenerateDataMask(this.Flux, this.Error);
+            BadDataMask.SyncCPU();
+
+            if (BadDataMask.Value.Contains(0f))
             {
-                this.Restframe_Wavelength = Vector.ScalarOperation(gpu, this.Wavelength, (1 + this.Redshift), "/");
+                // Filter Out the bad data
+                Console.WriteLine("Warning Bad Data Detected");
             }
-            catch (Exception)
+            else
             {
-                warn = true;
-                await Task.Delay(50);
-                goto retryRestWave;
-            }
+                //Console.WriteLine("Data is Fine");
+            } 
 
-        // Remove Bad data from the spectrum
-        // Generates the Filter Mask
-        retryBadDat:
-            try
-            {
-                float[] BadDataMask = this.GenerateDataMask(this.Flux, this.Error);
-
-                if (BadDataMask.Contains(0f))
-                {
-                    // Filter Out the bad data
-                    Console.WriteLine("Warning Bad Data Detected");
-                }
-                else
-                {
-                    //Console.WriteLine("Data is Fine");
-                }
-                // Else just proceed as the Data is Fine   
-            }
-            catch (Exception)
-            {
-                warn = true;
-                await Task.Delay(50);
-                goto retryBadDat;
-            }
+            // CALCULATE LUMINOSITY DISTANCE in CM and convert to Mpc
+            this.Distance_Luminosity = UtilityMethods.Mpc2cm(Program.cosmology.GPU_Integration(gpu, this.Redshift, 1e-8f));
 
 
-
-        retryDistLum:
-            try
-            {
-                // CALCULATE LUMINOSITY DISTANCE in CM
-                // Two versions to Test Normal and Optimised Algo. no noticable performance difference noted so far
-                this.Distance_Luminosity = UtilityMethods.Mpc2cm(await Program.cosmology.GPU_IntegrationOptiAsync(gpu, this.Redshift, 1e-8f)); //Program.cosmology.luminosity_distance(this.Redshift));
-            }
-            catch (Exception)
-            {
-                warn = true;
-                await Task.Delay(100);
-                goto retryDistLum;
-            }
-
-            
             // Initialise Model Section
             this.InitialiseSPModel();
 
-
-            // Display warning
-            if (warn)
-            {
-                Console.WriteLine("Warning Code Executed Slower Than Expected - Insufficient Memory");
-            }
-
         }
 
-        public async void InitialiseSpectraParameters(Vector Wavelength, Vector Flux, Vector Error, float Redshift, float[] RA_DEC, float Velocity_Disp, float instrument_resolution) // also include emission lines masking
+        public void InitialiseSpectraParameters(Vector Wavelength, Vector Flux, Vector Error, float Redshift, float[] RA_DEC, float Velocity_Disp, float instrument_resolution) // also include emission lines masking
         {
-            bool warn = false;
 
             // Set Long tasks to execute
             this.Wavelength = Wavelength;
@@ -263,93 +173,56 @@ namespace MachineLearningSpectralFittingCode
                 this.ebv_MW = 0f;
             }
 
+            this.Restframe_Wavelength = this.Wavelength * (1f / (1+this.Redshift));
 
-            retryRestWave:
-            try
-            {
-                this.Restframe_Wavelength = Vector.ScalarOperation(gpu, this.Wavelength, (1 + this.Redshift), "/");
-            }
-            catch (Exception)
-            {
-                warn = true;
-                await Task.Delay(50);
-                goto retryRestWave;
-            }
 
             // Remove Bad data from the spectrum
             // Generates the Filter Mask
-            retryBadDat:
-            try
-            {
-                float[] BadDataMask = this.GenerateDataMask(this.Flux, this.Error);
 
-                if (BadDataMask.Contains(0f))
-                {
-                    // Filter Out the bad data
-                    int goodvals = (int)BadDataMask.Sum();
+            Vector BadDataMask = this.GenerateDataMask(this.Flux, this.Error);
+            BadDataMask.SyncCPU();
+
+            if (BadDataMask.Value.Contains(0f))
+            {
+                // Filter Out the bad data
+                int goodvals = (int)BadDataMask.Sum();
                     
-                    float[] new_wavelength = new float[goodvals];
-                    float[] new_restframewavelength = new float[goodvals];
-                    float[] new_flux = new float[goodvals];
-                    float[] new_error = new float[goodvals];
+                float[] new_wavelength = new float[goodvals];
+                float[] new_restframewavelength = new float[goodvals];
+                float[] new_flux = new float[goodvals];
+                float[] new_error = new float[goodvals];
 
-                    for (int i = 0, j = 0; i < BadDataMask.Length; i++)
-                    {
-                        if (BadDataMask[i] != 1) { continue; }
-
-                        new_wavelength[j] = this.Wavelength.Value[i];
-                        new_restframewavelength[j] = this.Restframe_Wavelength.Value[i];
-                        new_flux[j] = this.Flux.Value[i];
-                        new_error[j] = this.Error.Value[i];
-                        j++;
-                    }
-
-                    this.Wavelength = new Vector(new_wavelength,1);
-                    this.Restframe_Wavelength = new Vector(new_restframewavelength, 1);
-                    this.Flux = new Vector(new_flux, 1);
-                    this.Error = new Vector(new_error, 1);
-
-                    //Console.WriteLine($"Warning Bad Data Detected, {BadDataMask.Sum() / BadDataMask.Length * 100}% are Good");
-                }
-                else
+                for (int i = 0, j = 0; i < BadDataMask.Length; i++)
                 {
-                    //Console.WriteLine("Data is Fine");
+                    if (BadDataMask.Value[i] != 1) { continue; }
+
+                    new_wavelength[j] = this.Wavelength.Value[i];
+                    new_restframewavelength[j] = this.Restframe_Wavelength.Value[i];
+                    new_flux[j] = this.Flux.Value[i];
+                    new_error[j] = this.Error.Value[i];
+                    j++;
                 }
-                // Else just proceed as the Data is Fine   
+
+                this.Wavelength.UpdateCache(new_wavelength);
+                this.Restframe_Wavelength.UpdateCache(new_restframewavelength);
+                this.Flux.UpdateCache(new_flux);
+                this.Error.UpdateCache(new_error);
+
+                //Console.WriteLine($"Warning Bad Data Detected, {BadDataMask.Sum() / BadDataMask.Length * 100}% are Good");
             }
-            catch (Exception)
+            else
             {
-                warn = true;
-                await Task.Delay(50);
-                goto retryBadDat;
+                //Console.WriteLine("Data is Fine");
             }
 
-            this.Instrument_Resolution = new Vector(Enumerable.Repeat(instrument_resolution, this.Wavelength.Value.Length).ToArray(), 1);
+            this.Instrument_Resolution = Vector.Fill(gpu, instrument_resolution, this.Wavelength.Length);
 
-            retryDistLum:
-            try
-            {
-                // CALCULATE LUMINOSITY DISTANCE in CM
-                // Two versions to Test Normal and Optimised Algo. no noticable performance difference noted so far
-                this.Distance_Luminosity = UtilityMethods.Mpc2cm(await Program.cosmology.GPU_IntegrationOptiAsync(gpu, this.Redshift, 1e-8f)); //Program.cosmology.luminosity_distance(this.Redshift));
-            }
-            catch (Exception)
-            {
-                warn = true;
-                await Task.Delay(100);
-                goto retryDistLum;
-            }
+            // CALCULATE LUMINOSITY DISTANCE in CM and convert to Mpc
+            this.Distance_Luminosity = UtilityMethods.Mpc2cm(Program.cosmology.GPU_Integration(gpu, this.Redshift, 1e-8f));
 
 
             // Initialise Model Section
             this.InitialiseSPModel();
-
-
-            // Display warning
-            if (warn)
-            {
-                Console.WriteLine("Warning Code Executed Slower Than Expected - Insufficient Memory");
-            }
 
         }
 
@@ -364,38 +237,28 @@ namespace MachineLearningSpectralFittingCode
 
         // SPECTRAL - SPECTRUM FUNCTIONS
         #region
-        private float[] GenerateDataMask(Vector flux, Vector Error) // Also add emission lines filter
+        private Vector GenerateDataMask(Vector flux, Vector error) // Also add emission lines filter
         {
+            flux.IncrementLiveCount();
+            error.IncrementLiveCount();
 
-            AcceleratorStream Stream = gpu.CreateStream();
+            Vector output = new Vector(gpu, new float[flux.Value.Length]);
+            output.IncrementLiveCount();
 
-            var kernelWithStream = gpu.LoadAutoGroupedKernel<Index1, ArrayView<float>, ArrayView<float>, ArrayView<float>>(GPU_GenerateDataMaskKernal);
+            MemoryBuffer<float> buffer = output.GetBuffer();
+            MemoryBuffer<float> buffer2 = flux.GetBuffer();
+            MemoryBuffer<float> buffer3 = error.GetBuffer();
 
-            var buffer = gpu.Allocate<float>(flux.Value.Length);
-            var buffer2 = gpu.Allocate<float>(flux.Value.Length);
-            var buffer3 = gpu.Allocate<float>(Error.Value.Length);
+            var kernelWithStream = gpu.accelerator.LoadAutoGroupedKernel<Index1, ArrayView<float>, ArrayView<float>, ArrayView<float>>(GPU_GenerateDataMaskKernal);
+            kernelWithStream(gpu.accelerator.DefaultStream, buffer.Length, buffer.View, buffer2.View, buffer3.View);
 
-            buffer.MemSetToZero(Stream);
-            buffer2.MemSetToZero(Stream);
-            buffer3.MemSetToZero(Stream);
+            gpu.accelerator.Synchronize();
 
-            buffer2.CopyFrom(Stream, flux.Value, 0, 0, flux.Value.Length);
-            buffer3.CopyFrom(Stream, Error.Value, 0, 0, Error.Value.Length);
+            flux.DecrementLiveCount();
+            Error.DecrementLiveCount();
+            output.DecrementLiveCount();
 
-
-            kernelWithStream(Stream, buffer.Length, buffer.View, buffer2.View, buffer3.View);
-
-            Stream.Synchronize();
-
-            float[] Output = buffer.GetAsArray(Stream);
-
-            buffer.Dispose();
-            buffer2.Dispose();
-            buffer3.Dispose();
-
-            Stream.Dispose();
-
-            return Output;
+            return output;
         }
 
         // GPU KERNEL
@@ -416,20 +279,21 @@ namespace MachineLearningSpectralFittingCode
             return Get_SFD_dust(l_b[0], l_b[1]);
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private float[] Eq2Gal(float ra, float dec)
         {
 
-            float Cos_dec_Mult_Cos_GNEV0 = (float)(Math.Cos(dec) * Math.Cos(ra - Constants.Galactic_Northpole_Equatorial.Value[0]));
+            float Cos_dec_Mult_Cos_GNEV0 = (float)(Math.Cos(dec) * Math.Cos(ra - Constants.Galactic_Northpole_Equatorial[0]));
 
             float b = (float)Math.Asin(
-                Math.Sin(dec) * Math.Sin(Constants.Galactic_Northpole_Equatorial.Value[1]) +
-                Math.Cos(Constants.Galactic_Northpole_Equatorial.Value[1]) * Cos_dec_Mult_Cos_GNEV0
+                Math.Sin(dec) * Math.Sin(Constants.Galactic_Northpole_Equatorial[1]) +
+                Math.Cos(Constants.Galactic_Northpole_Equatorial[1]) * Cos_dec_Mult_Cos_GNEV0
                 );
 
             float l = (float)Math.Atan2(
-                Math.Sin(dec) * Math.Cos(Constants.Galactic_Northpole_Equatorial.Value[1]) -
-                Math.Sin(Constants.Galactic_Northpole_Equatorial.Value[1]) * Cos_dec_Mult_Cos_GNEV0,
-                Math.Cos(dec) * Math.Sin(ra - Constants.Galactic_Northpole_Equatorial.Value[0])
+                Math.Sin(dec) * Math.Cos(Constants.Galactic_Northpole_Equatorial[1]) -
+                Math.Sin(Constants.Galactic_Northpole_Equatorial[1]) * Cos_dec_Mult_Cos_GNEV0,
+                Math.Cos(dec) * Math.Sin(ra - Constants.Galactic_Northpole_Equatorial[0])
                 ) + UtilityMethods.Degree2Radians(33f);
 
             if (l < 0)
@@ -610,6 +474,12 @@ namespace MachineLearningSpectralFittingCode
                 List<float> age_model = new List<float>();
                 List<float> metal_model = new List<float>();
 
+
+                Vector flux = new Vector(gpu, new float[Constants.wavelength.Length], 1, false);
+                
+
+                // MAX AGE needs fixing to use data from the fits input
+
                 for (int i = 0; i < Constants.t.Length; i++)
                 {
                     //index i in t , t value
@@ -631,12 +501,11 @@ namespace MachineLearningSpectralFittingCode
                         }
 
                         // TRIM DOWN THE WAVELENGTH AND THE FLUX to correspond to Data
-                        float[] flux = new float[Constants.wavelength.Length];
                         for (int k = 0; k < flux.Length; k++)
                         {
-                            flux[k] = Constants.fluxgrid[i, j, Constants.sidx, k];
+                            flux.Value[k] = Constants.fluxgrid[i, j, Constants.sidx, k];
                         }
-
+                        flux.UpdateCache();
 
                         // no conversion to vacuum needed, assuming models are in vacuum
 
@@ -650,11 +519,11 @@ namespace MachineLearningSpectralFittingCode
                         // Reddens the models
                         if (this.ebv_MW != 0)
                         {
-                            var attenuations = unred(Constants.wavelength, -this.ebv_MW); // ebv = 0f - ebv_mw
+                            Vector attenuations = unred(Constants.wavelength, -this.ebv_MW); // ebv = 0f - ebv_mw
 
                             try
                             {
-                                model_flux.AddRange(Vector.ConsecutiveOperation(gpu, (new Vector(flux)), (new Vector(attenuations)), '*').Value);
+                                model_flux.AddRange((flux * attenuations).Pull());
 
                             }
                             catch (Exception)
@@ -665,7 +534,7 @@ namespace MachineLearningSpectralFittingCode
                         }
                         else
                         {
-                            model_flux.AddRange(flux);
+                            model_flux.AddRange(flux.Pull());
                         }
                         
                         age_model.Add(Constants.t[i]);
@@ -674,7 +543,7 @@ namespace MachineLearningSpectralFittingCode
                     }
                 }
 
-                this.Model_flux = new Vector(model_flux.ToArray(), Constants.wavelength.Length ); // 2D flattened Array
+                this.Model_flux = new Vector(gpu, model_flux.ToArray(), Constants.wavelength.Length); // 2D flattened Array
                 this.Model_ages = age_model.ToArray();
                 this.Model_metals = metal_model.ToArray();
 
@@ -692,16 +561,16 @@ namespace MachineLearningSpectralFittingCode
             int[] indxs;
 
             // If data lies within the model
-            if (this.Model_wavelength[0] < this.Restframe_Wavelength.Value[0] && this.Model_wavelength[^1] > this.Restframe_Wavelength.Value[^1])
+            if (this.Model_wavelength.Value[0] < this.Restframe_Wavelength.Value[0] && this.Model_wavelength.Value[^1] > this.Restframe_Wavelength.Value[^1])
             {
 
-                float[] endVal = (from mwl in this.Model_wavelength
+                float[] endVal = (from mwl in this.Model_wavelength.Value
                                   select Math.Abs(mwl - this.Restframe_Wavelength.Value[^1])).ToArray();
 
                 int endIdx = Array.IndexOf(endVal, endVal.Min()) + 1;
 
 
-                float[] startVal = (from mwl in this.Model_wavelength[0..(endIdx+1)]
+                float[] startVal = (from mwl in this.Model_wavelength.Value[0..(endIdx+1)]
                                     select Math.Abs(mwl - this.Restframe_Wavelength.Value[0])).ToArray();
 
                 int startIdx = Array.IndexOf(startVal, startVal.Min());
@@ -721,8 +590,8 @@ namespace MachineLearningSpectralFittingCode
                     indxs[^1] = endIdx;
                     for (int i = 1; i < indxs.Length-1; i++)
                     {
-                        float[] matchtest = (from mwl in this.Model_wavelength[0..endIdx]
-                                             select Math.Abs(mwl - this.Restframe_Wavelength.Value[i])).ToArray();
+                        float[] matchtest = (from mwl in this.Model_wavelength.Value[0..endIdx]
+                                             select Math.Abs(mwl - this.Restframe_Wavelength[i])).ToArray();
                         indxs[i] = Array.IndexOf(matchtest, matchtest.Min());
                     }
 
@@ -736,10 +605,10 @@ namespace MachineLearningSpectralFittingCode
             this.DataLiesOutsideModel = true;
 
             indxs = new int[length_Data];
-            for (int i = 0; i < this.Restframe_Wavelength.Value.Length; i++)
+            for (int i = 0; i < this.Restframe_Wavelength.Length; i++)
             {
-                float[] matchtest = (from mwl in this.Model_wavelength
-                                     select Math.Abs(mwl - this.Restframe_Wavelength.Value[i])).ToArray();
+                float[] matchtest = (from mwl in this.Model_wavelength.Value
+                                     select Math.Abs(mwl - this.Restframe_Wavelength[i])).ToArray();
                 indxs[i] = Array.IndexOf(matchtest, matchtest.Min());
             }
             this.MatchingWavelengthMapping = indxs;
@@ -749,9 +618,9 @@ namespace MachineLearningSpectralFittingCode
             return;
         }
 
-        private (int[], Spectral_resolution, VariableGaussianKernel) DownGradeModelInvar(float[] mod_wavelength, int vdisp_round, float[] sres, Vector r_instrument, float min_sig_pix = 0f, bool no_offset = true)
+        private (int[], Spectral_resolution, VariableGaussianKernel) DownGradeModelInvar(Vector mod_wavelength, int vdisp_round, Vector sres, Vector r_instrument, float min_sig_pix = 0f, bool no_offset = true)
         {
-            float[] new_sig = new float[mod_wavelength.Length];
+            Vector new_sig = new Vector(gpu, new float[mod_wavelength.Length], 1, false);
 
             for (int i = 0, j = 0; i < mod_wavelength.Length; i++)
             {
@@ -761,16 +630,17 @@ namespace MachineLearningSpectralFittingCode
                 }
 
                 float sig_instrument = Constants.c_kms / (r_instrument.Value[j] * Constants.sig2FWHM);
-                new_sig[i] = MathF.Sqrt(MathF.Pow(vdisp_round, 2f) + MathF.Pow(sig_instrument, 2f));
+                new_sig.Value[i] = MathF.Sqrt(MathF.Pow(vdisp_round, 2f) + MathF.Pow(sig_instrument, 2f));
 
             }
+            new_sig.UpdateCache();
 
-            float[] new_sres = Vector.ScalarOperation(gpu, new Vector(new_sig), Constants.c_div_sig2, "^*").Value;
+            Vector new_sres = Constants.c_div_sig2 / new_sig;
 
             // IF mod_wavelength < 5 -> raise an error ?? Unlikely
 
             bool log_wave = true;
-            if ((mod_wavelength[3] - mod_wavelength[2]) - (mod_wavelength[2] - mod_wavelength[1]) < 0.000001f * (mod_wavelength[2] - mod_wavelength[1]))
+            if ((mod_wavelength.Value[3] - mod_wavelength.Value[2]) - (mod_wavelength.Value[2] - mod_wavelength.Value[1]) < 0.000001f * (mod_wavelength.Value[2] - mod_wavelength.Value[1]))
             {
                 log_wave = false;
             }
@@ -778,10 +648,10 @@ namespace MachineLearningSpectralFittingCode
 
             // match_spectral_resolution Begins
 
-            float[] wave = mod_wavelength;
-            float[] new_sres_wave = mod_wavelength;
+            Vector wave = mod_wavelength;
+            Vector new_sres_wave = mod_wavelength;
 
-            if (wave.Min() < new_sres_wave[0] || wave.Max() > new_sres_wave[^1])
+            if (wave.Min() < new_sres_wave.Value[0] || wave.Max() > new_sres_wave.Value[^1])
             {
                 Console.WriteLine("WARNING : Mapping to the new spectral resolution will require extrapolating the provided input vectors!");
             }
@@ -795,10 +665,10 @@ namespace MachineLearningSpectralFittingCode
 
             bool[] mask = Enumerable.Repeat<bool>(false, res.sig_mask.Length).ToArray();
 
-
-            int[] indx = (from sigpd in res.sig_pd
+            res.sig_pd.SyncCPU();
+            int[] indx = (from sigpd in res.sig_pd.Value
                           where sigpd > min_sig_pix
-                          select Array.IndexOf(res.sig_pd, sigpd)).ToArray();
+                          select Array.IndexOf(res.sig_pd.Value, sigpd)).ToArray();
 
 
 
@@ -814,7 +684,7 @@ namespace MachineLearningSpectralFittingCode
                 float[] selectedsig = new float[len];
                 for (int i = 0; i < len; i++)
                 {
-                    sres[indx[i]] = adjusted[i]; // sres_out
+                    sres.Value[indx[i]] = adjusted[i]; // sres_out
                     selectedsig[i] = res.sig_pd[indx[i]];
                 }
 
@@ -824,8 +694,8 @@ namespace MachineLearningSpectralFittingCode
             else
             {
 
-                sres = adjusted;                 // sres_out
-                vGK = new VariableGaussianKernel(gpu, res.sig_pd);
+                sres.UpdateCache(adjusted);              // sres_out
+                vGK = new VariableGaussianKernel(gpu, res.sig_pd.Pull());
             }
 
             //if (res.sig_mask.Contains(true) || mask.Contains(true))
@@ -841,7 +711,7 @@ namespace MachineLearningSpectralFittingCode
             return (indx, res, vGK);
         }
 
-        private float[] DownGrade(Accelerator gpu, float[] flux, int[] indx, Spectral_resolution res, VariableGaussianKernel vGK)
+        private Vector DownGrade(GPU gpu, Vector flux, int[] indx, Spectral_resolution res, VariableGaussianKernel vGK)
         {
 
             match_spectral_resolution(gpu, flux, indx, res, vGK);
@@ -853,7 +723,7 @@ namespace MachineLearningSpectralFittingCode
             return flux;
         }
 
-        private void match_spectral_resolution(Accelerator gpu, float[] flux, int[] indx, Spectral_resolution res, VariableGaussianKernel vGK)
+        private void match_spectral_resolution(GPU gpu, Vector flux, int[] indx, Spectral_resolution res, VariableGaussianKernel vGK)
         {
             //var dims = 1;
 
@@ -875,13 +745,14 @@ namespace MachineLearningSpectralFittingCode
                 float[] selectedflux = new float[len];
                 for (int i = 0; i < len; i++)
                 {
-                    selectedflux[i] = flux[indx[i]];
+                    selectedflux[i] = flux.Value[indx[i]];
                 }
 
-                float[] selected_outflux = vGK.Convolve(gpu, selectedflux);
+                float[] selected_outflux = vGK.Convolve(gpu, new Vector(gpu, selectedflux)).Pull();
+
                 for (int i = 0; i < len; i++)
                 {
-                    flux[indx[i]] = selected_outflux[i];   // flux out
+                    flux.Value[indx[i]] = selected_outflux[i];   // flux out
                 }
             }
             else
@@ -947,7 +818,7 @@ namespace MachineLearningSpectralFittingCode
             float data_norm = UtilityMethods.Median(this.Flux.Value);                 
             int num_mods = this.Model_flux.Value.Length / this.Model_flux.Columns;     // 198
             
-            float[] model_norm = new float[num_mods];                                 
+            Vector model_norm = new Vector(gpu, new float[num_mods],1,false);                                 
             float[] mass_factor = new float[num_mods];                                 
 
 
@@ -957,13 +828,15 @@ namespace MachineLearningSpectralFittingCode
                 mass_factor[i] = data_norm / model_norm[i];                            
             }
 
+            model_norm.UpdateCache();
+
             // OVER-WRITES MODEL FLUX WITH THE NORMALISED MODEL FLUX
-            this.Model_flux = Vector.ConsecutiveCompoundOperation2D(gpu, this.Model_flux, new Vector(model_norm), data_norm, "**");
+            this.Model_flux = Vector.ConsecutiveCompoundOperation2D(gpu, this.Model_flux, model_norm, data_norm, "**");
             this.Mass_factor = mass_factor;
 
         }
 
-        private float[] unred(float[] wavelength, float ebv_mw)
+        private Vector unred(Vector wavelength, float ebv_mw)
         {
 
 
@@ -982,11 +855,16 @@ namespace MachineLearningSpectralFittingCode
             // Get length of Data
             var length = this.Restframe_Wavelength.Value.Length;
 
+            this.Restframe_Wavelength.SyncCPU();
+
             // Finds the closest start value
-            float Closest_Start_Val = this.Model_wavelength.OrderBy(n => Math.Abs(this.Restframe_Wavelength.Value[0] - n)).First();
+            //float Closest_Start_Val = this.Model_wavelength.OrderBy(n => Math.Abs(this.Restframe_Wavelength.Value[0] - n)).First();
+
+            float Closest_Start_Val = (this.Restframe_Wavelength[0] - this.Model_wavelength).AbsX_IP().Min();
+
 
             // Gets Index of Closest Value
-            int idx_closest = Array.IndexOf(this.Model_wavelength, Closest_Start_Val);
+            int idx_closest = Array.IndexOf(this.Model_wavelength.Pull(), Closest_Start_Val);
 
             // Select the Model Flux for the Model
             float[] model_flux = this.Model_flux.Value[((model * this.Model_flux.Columns) + idx_closest)..((model * this.Model_flux.Columns) + idx_closest + length)];
@@ -1013,104 +891,83 @@ namespace MachineLearningSpectralFittingCode
 
             //noModels = 6;
 
-            List<int> pairX = new List<int>();
-            List<int> pairY = new List<int>();
+            var kernelWithStream = gpu.accelerator.LoadAutoGroupedKernel<Index1, ArrayView<float>, ArrayView<float>, ArrayView<int>, int>(TrimDownFlux);
 
-            //int NoG1SSPs = Enumerable.Range(1, noModels).Sum();
-            for (int j = noModels-1, i = 0; j >= 1; j--, i++)
-            {
-                pairX.AddRange(Enumerable.Repeat(i, j));
-                pairY.AddRange(Enumerable.Range(i+1,j));
-            }
+            Vector trimmedflux = new Vector(gpu, new float[this.MatchingWavelengthMapping.Length * noModels], this.MatchingWavelengthMapping.Length);
+            trimmedflux.IncrementLiveCount();
 
-            AcceleratorStream stream = gpu.CreateStream();
 
-            var kernelWithStream = gpu.LoadAutoGroupedKernel<Index1, ArrayView<float>, ArrayView<float>, ArrayView<int>, int>(TrimDownFlux);
+            MemoryBuffer<float> buffer = trimmedflux.GetBuffer();         // Output
+            MemoryBuffer<float> buffer2 = this.Model_flux.GetBuffer();    //  Input
+            MemoryBuffer<int> buffer3 = gpu.accelerator.Allocate<int>(this.MatchingWavelengthMapping.Length); //  Input
 
-            MemoryBuffer<float> buffer = gpu.Allocate<float>(this.MatchingWavelengthMapping.Length*noModels); // Output
-            MemoryBuffer<float> buffer2 = gpu.Allocate<float>(this.Model_flux.Value.Length); //  Input
-            MemoryBuffer<int> buffer3 = gpu.Allocate<int>(this.MatchingWavelengthMapping.Length); //  Input
+            buffer3.CopyFrom(gpu.accelerator.DefaultStream, this.MatchingWavelengthMapping, 0, 0, this.MatchingWavelengthMapping.Length);
 
-            buffer.MemSetToZero(stream);
-            buffer2.MemSetToZero(stream);
-            buffer3.MemSetToZero(stream);
+            kernelWithStream(gpu.accelerator.DefaultStream, noModels, buffer.View, buffer2.View, buffer3.View, lenOneModel);
 
-            buffer2.CopyFrom(stream, this.Model_flux.Value, 0, 0, this.Model_flux.Value.Length);
-            buffer3.CopyFrom(stream, this.MatchingWavelengthMapping, 0, 0, this.MatchingWavelengthMapping.Length);
+            gpu.accelerator.Synchronize();
 
-            kernelWithStream(stream, noModels, buffer.View, buffer2.View, buffer3.View, lenOneModel);
-
-            stream.Synchronize();
-
-            float[] trimmedflux = buffer.GetAsArray(stream); // Trimming ALL GOOD
-
-            //buffer.Dispose();
-            buffer2.Dispose();
             buffer3.Dispose();
 
             // RUN 1
 
-            var kernelWithStream2 = gpu.LoadAutoGroupedKernel<Index1, ArrayView<float>, ArrayView<float>, ArrayView<float>, ArrayView<float>, int>(ChiCalcRun1);
+            var kernelWithStream2 = gpu.accelerator.LoadAutoGroupedKernel<Index1, ArrayView<float>, ArrayView<float>, ArrayView<float>, ArrayView<float>, int>(ChiCalcRun1);
 
-            MemoryBuffer<float> buffer_chis = gpu.Allocate<float>(noModels); //  Output
-            MemoryBuffer<float> buffer_data_flux = gpu.Allocate<float>(this.Flux.Value.Length); //  Input
-            MemoryBuffer<float> buffer_data_err = gpu.Allocate<float>(this.Error.Value.Length); //  Input
+            Vector Chis = new Vector(gpu, new float[noModels]);
+            Chis.IncrementLiveCount();
 
-            buffer_data_flux.MemSetToZero(stream);
-            buffer_data_err.MemSetToZero(stream);
+            MemoryBuffer<float> buffer_chis = Chis.GetBuffer(); //  Output
+            MemoryBuffer<float> buffer_data_flux = this.Flux.GetBuffer(); //  Input
+            MemoryBuffer<float> buffer_data_err = this.Error.GetBuffer(); //  Input
 
-            buffer_data_flux.CopyFrom(stream, this.Flux.Value, 0, 0, this.Flux.Value.Length);
-            buffer_data_err.CopyFrom(stream, this.Error.Value, 0, 0, this.Error.Value.Length);
 
-            kernelWithStream2(stream, noModels, buffer_chis.View, buffer_data_flux.View, buffer_data_err.View, buffer.View, this.Flux.Value.Length);
+            kernelWithStream2(gpu.accelerator.DefaultStream, noModels, buffer_chis.View, buffer_data_flux.View, buffer_data_err.View, buffer.View, this.Flux.Value.Length);
 
-            stream.Synchronize();
-            
-            float[] Chis = buffer_chis.GetAsArray(stream);
+            gpu.accelerator.Synchronize();
 
-            //buffer_data_flux.Dispose();
-            //buffer_data_err.Dispose();
-            buffer_chis.Dispose();
-            //buffer.Dispose();
 
             // RUN 2
 
-            var kernelWithStream3 = gpu.LoadAutoGroupedKernel<Index1, ArrayView<float>, ArrayView<float>, ArrayView<float>, ArrayView<float>, ArrayView<int>, ArrayView<int>, int>(ChiCalcRun2);
+            List<int> pairX = new List<int>();
+            List<int> pairY = new List<int>();
 
-            MemoryBuffer<float> buffer_chis2 = gpu.Allocate<float>(pairX.Count); //  Output
-            MemoryBuffer<int> buffer_X = gpu.Allocate<int>(pairX.Count); //  Input
-            MemoryBuffer<int> buffer_Y = gpu.Allocate<int>(pairY.Count); //  Input
+            //int NoG1SSPs = Enumerable.Range(1, noModels).Sum();
+            for (int j = noModels - 1, i = 0; j >= 1; j--, i++)
+            {
+                pairX.AddRange(Enumerable.Repeat(i, j));
+                pairY.AddRange(Enumerable.Range(i + 1, j));
+            }
+
+            var kernelWithStream3 = gpu.accelerator.LoadAutoGroupedKernel<Index1, ArrayView<float>, ArrayView<float>, ArrayView<float>, ArrayView<float>, ArrayView<int>, ArrayView<int>, int>(ChiCalcRun2);
+
+            Vector ChisG1 = new Vector(gpu, new float[pairX.Count]);
+            ChisG1.IncrementLiveCount();
+
+            MemoryBuffer<float> buffer_chis2 = ChisG1.GetBuffer(); //  Output
+            MemoryBuffer<int> buffer_X = gpu.accelerator.Allocate<int>(pairX.Count); //  Input
+            MemoryBuffer<int> buffer_Y = gpu.accelerator.Allocate<int>(pairY.Count); //  Input
 
             buffer_chis2.MemSetToZero();
 
-            buffer_X.CopyFrom(stream, pairX.ToArray(), 0, 0, pairX.Count);
-            buffer_Y.CopyFrom(stream, pairY.ToArray(), 0, 0, pairY.Count);
+            buffer_X.CopyFrom(gpu.accelerator.DefaultStream, pairX.ToArray(), 0, 0, pairX.Count);
+            buffer_Y.CopyFrom(gpu.accelerator.DefaultStream, pairY.ToArray(), 0, 0, pairY.Count);
 
-            kernelWithStream3(stream, pairX.Count, buffer_chis2.View, buffer_data_flux.View, buffer_data_err.View, buffer.View, buffer_X.View, buffer_Y.View, this.Flux.Value.Length);
+            kernelWithStream3(gpu.accelerator.DefaultStream, pairX.Count, buffer_chis2.View, buffer_data_flux.View, buffer_data_err.View, buffer.View, buffer_X.View, buffer_Y.View, this.Flux.Value.Length);
 
-            stream.Synchronize();
+            gpu.accelerator.Synchronize();
 
-            float[] ChisG1 = buffer_chis2.GetAsArray(stream);
-
-            buffer_data_flux.Dispose();
-            buffer_data_err.Dispose();
-            buffer_chis2.Dispose();
-            buffer.Dispose();
             buffer_X.Dispose();
             buffer_Y.Dispose();
 
-            stream.Dispose();
-
-
             //Console.WriteLine($"best model is {Array.IndexOf(Chis, Chis.Min())} with chi : {Chis.Min() / this.Flux.Value.Length}");
 
-            int best_model = Array.IndexOf(ChisG1, ChisG1.Min());
+            int best_model = Array.IndexOf(ChisG1.Pull(), ChisG1.Min());
 
             //Console.WriteLine($"\n{this.Path[^25..].Replace(".fits","")} => SSP : {Chis.Min()/this.Flux.Value.Length} || 2 SSP : {ChisG1.Min()/this.Flux.Value.Length}");
 
             //Console.WriteLine($"best model is {pairX[best_model]} : {pairY[best_model]} with a chi of : {ChisG1.Min() / this.Flux.Value.Length}, with {this.Flux.Value.Length} degrees of freedom");
 
-            RecordData(Array.IndexOf(Chis, Chis.Min()), Chis.Min()/this.Flux.Value.Length, new int[2] {pairX[best_model], pairY[best_model]}, ChisG1.Min() / this.Flux.Value.Length);
+            RecordData(Array.IndexOf(Chis.Pull(), Chis.Min()), Chis.Min()/this.Flux.Value.Length, new int[2] {pairX[best_model], pairY[best_model]}, ChisG1.Min() / this.Flux.Value.Length);
         } 
 
         // Kernels
@@ -1212,13 +1069,13 @@ namespace MachineLearningSpectralFittingCode
             int length_Mod = this.Model_wavelength.Length;
             int models = length_Data / length_Mod;
 
-            float[] endVal = (from mwl in this.Model_wavelength
+            float[] endVal = (from mwl in this.Model_wavelength.Value
                               select Math.Abs(mwl - this.Restframe_Wavelength.Value[^1])).ToArray();
 
             int endIdx = Array.IndexOf(endVal, endVal.Min()) + 1;
 
 
-            float[] startVal = (from mwl in this.Model_wavelength[0..(endIdx + 1)]
+            float[] startVal = (from mwl in this.Model_wavelength.Value[0..(endIdx + 1)]
                                 select Math.Abs(mwl - this.Restframe_Wavelength.Value[0])).ToArray();
 
             int startIdx = Array.IndexOf(startVal, startVal.Min());
@@ -1232,45 +1089,32 @@ namespace MachineLearningSpectralFittingCode
                 new_mod_flux.AddRange(vals);
             }
 
-            AcceleratorStream Stream = gpu.CreateStream();
 
-            var kernelWithStream = gpu.LoadAutoGroupedKernel<Index1, ArrayView<float>, ArrayView<float>, ArrayView<float>, ArrayView<float>, int>(CalcChiKernel);
+            var kernelWithStream = gpu.accelerator.LoadAutoGroupedKernel<Index1, ArrayView<float>, ArrayView<float>, ArrayView<float>, ArrayView<float>, int>(CalcChiKernel);
 
-            var buffer = gpu.Allocate<float>(new_mod_flux.Count); // Output
-            var buffer2 = gpu.Allocate<float>(new_mod_flux.Count); // Input
-            var buffer3 = gpu.Allocate<float>(model_len); // Input
-            var buffer4 = gpu.Allocate<float>(model_len); // Input
+            Vector output = new Vector(gpu, new float[new_mod_flux.Count]);
+            output.IncrementLiveCount();
 
-            buffer.MemSetToZero(Stream);
-            buffer2.MemSetToZero(Stream);
-            buffer3.MemSetToZero(Stream);
-            buffer4.MemSetToZero(Stream);
+            Vector new_mod_flux_vec = new Vector(gpu, new_mod_flux.ToArray());
+            new_mod_flux_vec.IncrementLiveCount();
 
-            buffer2.CopyFrom(Stream, new_mod_flux.ToArray(), 0, 0, new_mod_flux.Count);
-            buffer3.CopyFrom(Stream, this.Flux.Value, 0, 0, this.Flux.Value.Length);
-            buffer4.CopyFrom(Stream, this.Error.Value, 0, 0, this.Error.Value.Length);
+            MemoryBuffer<float> buffer = output.GetBuffer(); // Output
+            MemoryBuffer<float> buffer2 = new_mod_flux_vec.GetBuffer(); // Input
+            MemoryBuffer<float> fluxBuf = Flux.GetBuffer(); // Input
+            MemoryBuffer<float> errorBuf = Error.GetBuffer(); // Input
 
 
+            kernelWithStream(gpu.accelerator.DefaultStream, buffer.Length, buffer.View, buffer2.View, fluxBuf.View, errorBuf.View , model_len);
 
-            kernelWithStream(Stream, buffer.Length, buffer.View, buffer2.View, buffer3.View, buffer4.View , model_len);
+            gpu.accelerator.Synchronize();
 
-            Stream.Synchronize();
-
-            float[] Output = buffer.GetAsArray(Stream);
-
-            buffer.Dispose();
-            buffer2.Dispose();
-            buffer3.Dispose();
-            buffer4.Dispose();
-
-            Stream.Dispose();
+            output.SyncCPU();
 
             float[] chis = new float[models];
             for (int i = 0; i < models; i++)
             {
-                chis[i] = Output[(i * model_len)..((i + 1) * model_len)].Sum();
+                chis[i] = output.GetRowAsArray(i,true).Sum();
             }
-
 
             return chis;
         }

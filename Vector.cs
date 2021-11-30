@@ -5,7 +5,7 @@ using System;
 using System.Linq;
 using System.Threading.Tasks;
 
-namespace MachineLearningSpectralFittingCode
+namespace FALCON.vector
 {
 
     /* LOG :
@@ -101,8 +101,7 @@ namespace MachineLearningSpectralFittingCode
 
             return new Vector(Output);
         }
-        public static async Task<Vector> AccessSliceAsync(Accelerator gpu, Vector vector, int row_col_index, char row_col)
-#pragma warning restore CS1998 // Async method lacks 'await' operators and will run synchronously
+        public static Vector AccessSliceAsync(Accelerator gpu, Vector vector, int row_col_index, char row_col)
         {            
 
             if (vector.Columns == 1)
