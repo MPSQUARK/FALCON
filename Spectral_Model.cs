@@ -27,7 +27,7 @@ namespace FALCON
             this.gpu = GPU;
         }
 
-        GPU gpu;
+        readonly GPU gpu;
 
         // SPECTRA SPECIFIC VARIABLES
         #region
@@ -64,14 +64,15 @@ namespace FALCON
         public byte ObjID { get; private set; }
         // Bad Data ?? 
         // mask emission lines
-        public float ebv_MW { get; private set; }
+        public float Ebv_MW { get; private set; }
         public bool DataLiesOutsideModel = false;
         #endregion
 
         // MODEL SPECIFIC VARIABLES
         #region
-        int velocity_dispersion_r { get; set; }
-        int fit_per_iteration_cap { get; set; }
+        int Velocity_dispersion_r { get; set; }
+        //int fit_per_iteration_cap { get; set; }
+
         // Model Main Values
         /// <summary>
         /// MODEL wavelengths
@@ -113,11 +114,11 @@ namespace FALCON
 
             if (this.Milky_Way_Reddening)
             {
-                this.ebv_MW = this.GetDustRADEC(this.RA_DEC, "ebv");
+                this.Ebv_MW = this.GetDustRADEC(this.RA_DEC, "ebv");
             }
             else
             {
-                this.ebv_MW = 0f;
+                this.Ebv_MW = 0f;
             }
 
             this.Restframe_Wavelength = this.Wavelength * (1 / (1 + this.Redshift));
@@ -166,14 +167,14 @@ namespace FALCON
 
             if (this.Milky_Way_Reddening)
             {
-                this.ebv_MW = this.GetDustRADEC(this.RA_DEC, "ebv");
+                this.Ebv_MW = this.GetDustRADEC(this.RA_DEC, "ebv");
             }
             else
             {
-                this.ebv_MW = 0f;
+                this.Ebv_MW = 0f;
             }
 
-            this.Restframe_Wavelength = this.Wavelength * (1f / (1+this.Redshift));
+            this.Restframe_Wavelength = this.Wavelength * XMath.Rcp(1+this.Redshift);
 
 
             // Remove Bad data from the spectrum
@@ -192,12 +193,17 @@ namespace FALCON
                 float[] new_flux = new float[goodvals];
                 float[] new_error = new float[goodvals];
 
+                this.Wavelength.SyncCPU();
+                this.Restframe_Wavelength.SyncCPU();
+                this.Flux.SyncCPU();
+                this.Error.SyncCPU();
+
                 for (int i = 0, j = 0; i < BadDataMask.Length; i++)
                 {
                     if (BadDataMask.Value[i] != 1) { continue; }
 
-                    new_wavelength[j] = this.Wavelength.Value[i];
-                    new_restframewavelength[j] = this.Restframe_Wavelength.Value[i];
+                    new_wavelength[j] = this.Wavelength[i];
+                    new_restframewavelength[j] = this.Restframe_Wavelength[i];
                     new_flux[j] = this.Flux.Value[i];
                     new_error[j] = this.Error.Value[i];
                     j++;
@@ -231,7 +237,7 @@ namespace FALCON
         // Model Initialisation
         private void InitialiseSPModel()
         {
-            this.velocity_dispersion_r = (int)(MathF.Round(this.Velocity_Dispersion / 5f) * 5f);
+            this.Velocity_dispersion_r = (int)(MathF.Round(this.Velocity_Dispersion / 5f) * 5f);
         }
 
 
@@ -242,27 +248,28 @@ namespace FALCON
             flux.IncrementLiveCount();
             error.IncrementLiveCount();
 
-            Vector output = new Vector(gpu, new float[flux.Value.Length]);
+            Vector output = new(gpu, new float[flux.Length]);
             output.IncrementLiveCount();
 
-            MemoryBuffer<float> buffer = output.GetBuffer();
-            MemoryBuffer<float> buffer2 = flux.GetBuffer();
-            MemoryBuffer<float> buffer3 = error.GetBuffer();
+            MemoryBuffer1D<float, Stride1D.Dense> 
+                buffer = output.GetBuffer(),
+                buffer2 = flux.GetBuffer(),
+                buffer3 = error.GetBuffer();
 
-            var kernelWithStream = gpu.accelerator.LoadAutoGroupedKernel<Index1, ArrayView<float>, ArrayView<float>, ArrayView<float>>(GPU_GenerateDataMaskKernal);
-            kernelWithStream(gpu.accelerator.DefaultStream, buffer.Length, buffer.View, buffer2.View, buffer3.View);
+            var kernelWithStream = gpu.accelerator.LoadAutoGroupedKernel<Index1D, ArrayView<float>, ArrayView<float>, ArrayView<float>>(GPU_GenerateDataMaskKernal);
+            kernelWithStream(gpu.accelerator.DefaultStream, buffer.IntExtent, buffer.View, buffer2.View, buffer3.View);
 
             gpu.accelerator.Synchronize();
 
             flux.DecrementLiveCount();
-            Error.DecrementLiveCount();
+            error.DecrementLiveCount();
             output.DecrementLiveCount();
 
             return output;
         }
 
         // GPU KERNEL
-        static void GPU_GenerateDataMaskKernal(Index1 index, ArrayView<float> OutPut, ArrayView<float> flux, ArrayView<float> error)
+        static void GPU_GenerateDataMaskKernal(Index1D index, ArrayView<float> OutPut, ArrayView<float> flux, ArrayView<float> error)
         {
             // False means Exclude/Bad Data, True means Good Data
             OutPut[index] = Convert.ToSingle(!(float.IsNaN(flux[index]) || float.IsInfinity(flux[index]) || (flux[index] <= 0f) || float.IsNaN(error[index]) || float.IsInfinity(error[index])));
@@ -468,14 +475,14 @@ namespace FALCON
                 // Gets Indexes of Models matching wavlengths
                 this.TrimModel();
 
-                (int[] indx, Spectral_resolution res, VariableGaussianKernel vGK) = this.DownGradeModelInvar(this.Model_wavelength, this.velocity_dispersion_r, Constants.sres, this.Instrument_Resolution);
+                (int[] indx, Spectral_resolution res, VariableGaussianKernel vGK) = this.DownGradeModelInvar(this.Model_wavelength, this.Velocity_dispersion_r, Constants.sres, this.Instrument_Resolution);
 
-                List<float> model_flux = new List<float>();
-                List<float> age_model = new List<float>();
-                List<float> metal_model = new List<float>();
+                List<float> model_flux = new();
+                List<float> age_model = new();
+                List<float> metal_model = new();
 
 
-                Vector flux = new Vector(gpu, new float[Constants.wavelength.Length], 1, false);
+                Vector flux = new(gpu, new float[Constants.wavelength.Length], 1, false);
                 
 
                 // MAX AGE needs fixing to use data from the fits input
@@ -517,9 +524,9 @@ namespace FALCON
                         
 
                         // Reddens the models
-                        if (this.ebv_MW != 0)
+                        if (this.Ebv_MW != 0)
                         {
-                            Vector attenuations = unred(Constants.wavelength, -this.ebv_MW); // ebv = 0f - ebv_mw
+                            Vector attenuations = unred(Constants.wavelength, -this.Ebv_MW); // ebv = 0f - ebv_mw
 
                             try
                             {
@@ -556,12 +563,15 @@ namespace FALCON
         private void TrimModel()
         {
 
-            int length_Data = this.Restframe_Wavelength.Value.Length;
+            int length_Data = this.Restframe_Wavelength.Length;
             int length_Mod  = this.Model_wavelength.Length;
             int[] indxs;
 
+            this.Model_wavelength.SyncCPU();
+            this.Restframe_Wavelength.SyncCPU();
+
             // If data lies within the model
-            if (this.Model_wavelength.Value[0] < this.Restframe_Wavelength.Value[0] && this.Model_wavelength.Value[^1] > this.Restframe_Wavelength.Value[^1])
+            if (this.Model_wavelength[0] < this.Restframe_Wavelength[0] && this.Model_wavelength.Value[^1] > this.Restframe_Wavelength.Value[^1])
             {
 
                 float[] endVal = (from mwl in this.Model_wavelength.Value
@@ -620,7 +630,8 @@ namespace FALCON
 
         private (int[], Spectral_resolution, VariableGaussianKernel) DownGradeModelInvar(Vector mod_wavelength, int vdisp_round, Vector sres, Vector r_instrument, float min_sig_pix = 0f, bool no_offset = true)
         {
-            Vector new_sig = new Vector(gpu, new float[mod_wavelength.Length], 1, false);
+            Vector new_sig = new(gpu, new float[mod_wavelength.Length], 1, false);
+            r_instrument.SyncCPU();
 
             for (int i = 0, j = 0; i < mod_wavelength.Length; i++)
             {
@@ -629,7 +640,7 @@ namespace FALCON
                     j++;
                 }
 
-                float sig_instrument = Constants.c_kms / (r_instrument.Value[j] * Constants.sig2FWHM);
+                float sig_instrument = Constants.c_kms / (r_instrument[j] * Constants.sig2FWHM);
                 new_sig.Value[i] = MathF.Sqrt(MathF.Pow(vdisp_round, 2f) + MathF.Pow(sig_instrument, 2f));
 
             }
@@ -656,14 +667,14 @@ namespace FALCON
                 Console.WriteLine("WARNING : Mapping to the new spectral resolution will require extrapolating the provided input vectors!");
             }
 
-            Spectral_resolution new_res = new Spectral_resolution(gpu, new_sres_wave, new_sres, log_wave);
-            Spectral_resolution res = new Spectral_resolution(gpu, wave, sres, log_wave);
+            Spectral_resolution new_res = new(gpu, new_sres_wave, new_sres, log_wave);
+            Spectral_resolution res = new(gpu, wave, sres, log_wave);
 
             res.match(new_res, no_offset, min_sig_pix);
 
 
 
-            bool[] mask = Enumerable.Repeat<bool>(false, res.sig_mask.Length).ToArray();
+            //bool[] mask = Enumerable.Repeat<bool>(false, res.sig_mask.Length).ToArray();
 
             res.sig_pd.SyncCPU();
             int[] indx = (from sigpd in res.sig_pd.Value
@@ -714,7 +725,7 @@ namespace FALCON
         private Vector DownGrade(GPU gpu, Vector flux, int[] indx, Spectral_resolution res, VariableGaussianKernel vGK)
         {
 
-            match_spectral_resolution(gpu, flux, indx, res, vGK);
+            Match_spectral_resolution(gpu, flux, indx, res, vGK);
             
             // Call match_spectral_resolution(mod_wavelength, flux, sres, mod_wavelength, new_sres, min_sig_pix=0.0,
             // log10=log_wave, new_log10=log_wave)
@@ -723,7 +734,7 @@ namespace FALCON
             return flux;
         }
 
-        private void match_spectral_resolution(GPU gpu, Vector flux, int[] indx, Spectral_resolution res, VariableGaussianKernel vGK)
+        private void Match_spectral_resolution(GPU gpu, Vector flux, int[] indx, Spectral_resolution res, VariableGaussianKernel vGK)
         {
             //var dims = 1;
 
@@ -752,8 +763,9 @@ namespace FALCON
 
                 for (int i = 0; i < len; i++)
                 {
-                    flux.Value[indx[i]] = selected_outflux[i];   // flux out
+                    flux.Value[indx[i]] = selected_outflux[i];   // flux out     
                 }
+                flux.UpdateCache();
             }
             else
             {
@@ -815,25 +827,57 @@ namespace FALCON
 
         private void NormaliseSpec()
         {
-            float data_norm = UtilityMethods.Median(this.Flux.Value);                 
-            int num_mods = this.Model_flux.Value.Length / this.Model_flux.Columns;     // 198
+            float data_norm = UtilityMethods.Median(this.Flux.Pull());                 
+            int num_mods = this.Model_flux.Length / this.Model_flux.Columns;     // 198
             
-            Vector model_norm = new Vector(gpu, new float[num_mods],1,false);                                 
-            float[] mass_factor = new float[num_mods];                                 
+            Vector model_norm = new(gpu, new float[num_mods],1,false);                                 
+            float[] mass_factor = new float[num_mods];
 
-
+            this.Model_flux.SyncCPU();
             for (int i = 0; i < num_mods; i++)
             {
-                model_norm[i] = UtilityMethods.Median(this.Model_flux.Value[(i*this.Model_flux.Columns)..((i+1) * this.Model_flux.Columns)]); 
+                model_norm[i] = UtilityMethods.Median(this.Model_flux.GetRowAsArray(i,true)); 
                 mass_factor[i] = data_norm / model_norm[i];                            
             }
 
             model_norm.UpdateCache();
 
             // OVER-WRITES MODEL FLUX WITH THE NORMALISED MODEL FLUX
-            this.Model_flux = Vector.ConsecutiveCompoundOperation2D(gpu, this.Model_flux, model_norm, data_norm, "**");
+            this.Model_flux = ConsecutiveCompoundOperation2D(this.Model_flux, model_norm, data_norm);
             this.Mass_factor = mass_factor;
 
+        }
+
+        public Vector ConsecutiveCompoundOperation2D(Vector vectorA, Vector vectorB, float scalar)
+        {
+            vectorA.IncrementLiveCount();
+            vectorB.IncrementLiveCount();
+
+            Vector output = new(gpu, new float[vectorA.Length], vectorA.Columns);
+
+            output.IncrementLiveCount();
+
+            var kernelWithStream = gpu.accelerator.LoadAutoGroupedKernel<Index1D, ArrayView<float>, ArrayView<float>, ArrayView<float>, float, float>(ConsecutiveC_VDSP_2DKernel);
+
+            var buffer = output.GetBuffer(); // Output
+            var buffer2 = vectorA.GetBuffer(); // Input
+            var buffer3 = vectorB.GetBuffer(); // Input
+
+
+            kernelWithStream(gpu.accelerator.DefaultStream, buffer.IntExtent, buffer.View, buffer2.View, buffer3.View, vectorA.Columns, scalar);
+
+            gpu.accelerator.Synchronize();
+
+            vectorA.DecrementLiveCount();
+            vectorB.DecrementLiveCount();
+            output.DecrementLiveCount();
+
+            return output;
+        }
+        // KERNEL
+        static void ConsecutiveC_VDSP_2DKernel(Index1D index, ArrayView<float> Output, ArrayView<float> InputA, ArrayView<float> InputB, float Cols, float Scalar)
+        {
+            Output[index] = (InputA[index] / InputB[(int)(index / Cols)]) * Scalar;
         }
 
         private Vector unred(Vector wavelength, float ebv_mw)
@@ -885,23 +929,22 @@ namespace FALCON
         // will combine together SSP 50:50, 30:30:30, 25:25:25:25, 20:20:20:20:20
         private void GenerateInterpSSP()
         {
-            int totlen = this.Model_flux.Value.Length;
+            int totlen = this.Model_flux.Length;
             int lenOneModel = this.Model_flux.Columns;
             int noModels = totlen / lenOneModel;
 
             //noModels = 6;
 
-            var kernelWithStream = gpu.accelerator.LoadAutoGroupedKernel<Index1, ArrayView<float>, ArrayView<float>, ArrayView<int>, int>(TrimDownFlux);
+            var kernelWithStream = gpu.accelerator.LoadAutoGroupedKernel<Index1D, ArrayView<float>, ArrayView<float>, ArrayView<int>, int>(TrimDownFlux);
 
-            Vector trimmedflux = new Vector(gpu, new float[this.MatchingWavelengthMapping.Length * noModels], this.MatchingWavelengthMapping.Length);
+            Vector trimmedflux = new(gpu, new float[this.MatchingWavelengthMapping.Length * noModels], this.MatchingWavelengthMapping.Length);
             trimmedflux.IncrementLiveCount();
 
 
-            MemoryBuffer<float> buffer = trimmedflux.GetBuffer();         // Output
-            MemoryBuffer<float> buffer2 = this.Model_flux.GetBuffer();    //  Input
-            MemoryBuffer<int> buffer3 = gpu.accelerator.Allocate<int>(this.MatchingWavelengthMapping.Length); //  Input
-
-            buffer3.CopyFrom(gpu.accelerator.DefaultStream, this.MatchingWavelengthMapping, 0, 0, this.MatchingWavelengthMapping.Length);
+            MemoryBuffer1D<float,Stride1D.Dense> 
+                buffer = trimmedflux.GetBuffer(),         // Output
+                buffer2 = this.Model_flux.GetBuffer();    //  Input
+            MemoryBuffer1D<int, Stride1D.Dense> buffer3 = gpu.accelerator.Allocate1D(this.MatchingWavelengthMapping); //  Input
 
             kernelWithStream(gpu.accelerator.DefaultStream, noModels, buffer.View, buffer2.View, buffer3.View, lenOneModel);
 
@@ -911,25 +954,26 @@ namespace FALCON
 
             // RUN 1
 
-            var kernelWithStream2 = gpu.accelerator.LoadAutoGroupedKernel<Index1, ArrayView<float>, ArrayView<float>, ArrayView<float>, ArrayView<float>, int>(ChiCalcRun1);
+            var kernelWithStream2 = gpu.accelerator.LoadAutoGroupedKernel<Index1D, ArrayView<float>, ArrayView<float>, ArrayView<float>, ArrayView<float>, int>(ChiCalcRun1);
 
-            Vector Chis = new Vector(gpu, new float[noModels]);
+            Vector Chis = new(gpu, new float[noModels]);
             Chis.IncrementLiveCount();
 
-            MemoryBuffer<float> buffer_chis = Chis.GetBuffer(); //  Output
-            MemoryBuffer<float> buffer_data_flux = this.Flux.GetBuffer(); //  Input
-            MemoryBuffer<float> buffer_data_err = this.Error.GetBuffer(); //  Input
+            MemoryBuffer1D<float, Stride1D.Dense> 
+                buffer_chis = Chis.GetBuffer(), //  Output
+                buffer_data_flux = this.Flux.GetBuffer(), //  Input
+                buffer_data_err = this.Error.GetBuffer(); //  Input
 
 
-            kernelWithStream2(gpu.accelerator.DefaultStream, noModels, buffer_chis.View, buffer_data_flux.View, buffer_data_err.View, buffer.View, this.Flux.Value.Length);
+            kernelWithStream2(gpu.accelerator.DefaultStream, noModels, buffer_chis.View, buffer_data_flux.View, buffer_data_err.View, buffer.View, this.Flux.Length);
 
             gpu.accelerator.Synchronize();
 
 
             // RUN 2
 
-            List<int> pairX = new List<int>();
-            List<int> pairY = new List<int>();
+            List<int> pairX = new();
+            List<int> pairY = new();
 
             //int NoG1SSPs = Enumerable.Range(1, noModels).Sum();
             for (int j = noModels - 1, i = 0; j >= 1; j--, i++)
@@ -938,21 +982,17 @@ namespace FALCON
                 pairY.AddRange(Enumerable.Range(i + 1, j));
             }
 
-            var kernelWithStream3 = gpu.accelerator.LoadAutoGroupedKernel<Index1, ArrayView<float>, ArrayView<float>, ArrayView<float>, ArrayView<float>, ArrayView<int>, ArrayView<int>, int>(ChiCalcRun2);
+            var kernelWithStream3 = gpu.accelerator.LoadAutoGroupedKernel<Index1D, ArrayView<float>, ArrayView<float>, ArrayView<float>, ArrayView<float>, ArrayView<int>, ArrayView<int>, int>(ChiCalcRun2);
 
-            Vector ChisG1 = new Vector(gpu, new float[pairX.Count]);
+            Vector ChisG1 = new(gpu, new float[pairX.Count]);
             ChisG1.IncrementLiveCount();
 
-            MemoryBuffer<float> buffer_chis2 = ChisG1.GetBuffer(); //  Output
-            MemoryBuffer<int> buffer_X = gpu.accelerator.Allocate<int>(pairX.Count); //  Input
-            MemoryBuffer<int> buffer_Y = gpu.accelerator.Allocate<int>(pairY.Count); //  Input
+            MemoryBuffer1D<float, Stride1D.Dense> buffer_chis2 = ChisG1.GetBuffer(); //  Output
+            MemoryBuffer1D<int, Stride1D.Dense> 
+                buffer_X = gpu.accelerator.Allocate1D(pairX.ToArray()), //  Input
+                buffer_Y = gpu.accelerator.Allocate1D(pairY.ToArray()); //  Input
 
-            buffer_chis2.MemSetToZero();
-
-            buffer_X.CopyFrom(gpu.accelerator.DefaultStream, pairX.ToArray(), 0, 0, pairX.Count);
-            buffer_Y.CopyFrom(gpu.accelerator.DefaultStream, pairY.ToArray(), 0, 0, pairY.Count);
-
-            kernelWithStream3(gpu.accelerator.DefaultStream, pairX.Count, buffer_chis2.View, buffer_data_flux.View, buffer_data_err.View, buffer.View, buffer_X.View, buffer_Y.View, this.Flux.Value.Length);
+            kernelWithStream3(gpu.accelerator.DefaultStream, pairX.Count, buffer_chis2.View, buffer_data_flux.View, buffer_data_err.View, buffer.View, buffer_X.View, buffer_Y.View, this.Flux.Length);
 
             gpu.accelerator.Synchronize();
 
@@ -967,18 +1007,22 @@ namespace FALCON
 
             //Console.WriteLine($"best model is {pairX[best_model]} : {pairY[best_model]} with a chi of : {ChisG1.Min() / this.Flux.Value.Length}, with {this.Flux.Value.Length} degrees of freedom");
 
-            RecordData(Array.IndexOf(Chis.Pull(), Chis.Min()), Chis.Min()/this.Flux.Value.Length, new int[2] {pairX[best_model], pairY[best_model]}, ChisG1.Min() / this.Flux.Value.Length);
+            RecordData(Array.IndexOf(Chis.Pull(), Chis.Min()), Chis.Min()/this.Flux.Length, new int[2] {pairX[best_model], pairY[best_model]}, ChisG1.Min() / this.Flux.Length);
+
+            trimmedflux.DecrementLiveCount();
+            Chis.DecrementLiveCount();
+            ChisG1.DecrementLiveCount();
         } 
 
         // Kernels
-        static void TrimDownFlux(Index1 index, ArrayView<float> Output, ArrayView<float> Fluxes, ArrayView<int> idxs, int fluxlen)
+        static void TrimDownFlux(Index1D index, ArrayView<float> Output, ArrayView<float> Fluxes, ArrayView<int> idxs, int fluxlen)
         {
             for (int i = 0; i < idxs.Length; i++)
             {
                 Output[index * idxs.Length + i] = Fluxes[index * fluxlen + idxs[i]];
             }
         }
-        static void ChiCalcRun1(Index1 index, ArrayView<float> Chis, ArrayView<float> DataFlux, ArrayView<float> DataError, ArrayView<float> ModelFlux, int Modellen)
+        static void ChiCalcRun1(Index1D index, ArrayView<float> Chis, ArrayView<float> DataFlux, ArrayView<float> DataError, ArrayView<float> ModelFlux, int Modellen)
         {
             float sum = 0f;
             for (int i = 0; i < Modellen; i++)
@@ -989,7 +1033,7 @@ namespace FALCON
             Chis[index] = sum;
 
         }
-        static void ChiCalcRun2(Index1 index, ArrayView<float> Chis, ArrayView<float> DataFlux, ArrayView<float> DataError, ArrayView<float> ModelFlux, ArrayView<int> X, ArrayView<int> Y, int Modellen)
+        static void ChiCalcRun2(Index1D index, ArrayView<float> Chis, ArrayView<float> DataFlux, ArrayView<float> DataError, ArrayView<float> ModelFlux, ArrayView<int> X, ArrayView<int> Y, int Modellen)
         {
             float sum = 0f;
             for (int i = 0; i < Modellen; i++)
@@ -1008,16 +1052,16 @@ namespace FALCON
             File.WriteAllText(data, "");
 
             File.AppendAllText(data, "Restframe Wavelength of Data :\n");
-            File.AppendAllText(data, string.Join(" ", this.Restframe_Wavelength.Value));
+            File.AppendAllText(data, string.Join(" ", this.Restframe_Wavelength.Pull()));
 
             File.AppendAllText(data, "\nFlux of Data : \n");
-            File.AppendAllText(data, string.Join(" ", this.Flux.Value));
+            File.AppendAllText(data, string.Join(" ", this.Flux.Pull()));
 
             File.AppendAllText(data, "\nError of Data : \n");
-            File.AppendAllText(data, string.Join(" ", this.Error.Value));
+            File.AppendAllText(data, string.Join(" ", this.Error.Pull()));
 
             File.AppendAllText(data, "\nModel Wavelengths : \n");
-            File.AppendAllText(data, string.Join(" ", this.Model_wavelength));
+            File.AppendAllText(data, string.Join(" ", this.Model_wavelength.Pull()));
 
 
             File.AppendAllText(data, "\n\nBest Single Model Fit : \n");
@@ -1028,7 +1072,8 @@ namespace FALCON
             File.AppendAllText(data, $"\nGalaxy Mass Predicted : {(1f / this.Mass_factor[SSPmodelnum]) * 1e-17f} Msolar \n");
 
             File.AppendAllText(data, "\nModel Flux : \n");
-            File.AppendAllText(data, string.Join(" ", this.Model_flux.Value[(SSPmodelnum*this.Model_wavelength.Length)..((SSPmodelnum +1) * this.Model_wavelength.Length)]));
+            File.AppendAllText(data, string.Join(" ", this.Model_flux.GetRowAsArray(SSPmodelnum)));
+
 
 
 
@@ -1050,7 +1095,7 @@ namespace FALCON
 
         }
 
-        private float[] Midpoint(float[] vectA, float[] vectB)
+        private static float[] Midpoint(float[] vectA, float[] vectB)
         {
             float[] vectR = new float[vectA.Length];
             for (int i = 0; i < vectA.Length; i++)
@@ -1082,7 +1127,7 @@ namespace FALCON
 
             int model_len = endIdx - startIdx;
 
-            List<float> new_mod_flux = new List<float>();
+            List<float> new_mod_flux = new();
             for (int i = 0; i < models; i++)
             {
                 float[] vals = this.Model_flux.Value[(i * length_Mod + startIdx)..(i * length_Mod + endIdx)];
@@ -1090,21 +1135,22 @@ namespace FALCON
             }
 
 
-            var kernelWithStream = gpu.accelerator.LoadAutoGroupedKernel<Index1, ArrayView<float>, ArrayView<float>, ArrayView<float>, ArrayView<float>, int>(CalcChiKernel);
+            var kernelWithStream = gpu.accelerator.LoadAutoGroupedKernel<Index1D, ArrayView<float>, ArrayView<float>, ArrayView<float>, ArrayView<float>, int>(CalcChiKernel);
 
-            Vector output = new Vector(gpu, new float[new_mod_flux.Count]);
+            Vector output = new(gpu, new float[new_mod_flux.Count]);
             output.IncrementLiveCount();
 
-            Vector new_mod_flux_vec = new Vector(gpu, new_mod_flux.ToArray());
+            Vector new_mod_flux_vec = new(gpu, new_mod_flux.ToArray());
             new_mod_flux_vec.IncrementLiveCount();
 
-            MemoryBuffer<float> buffer = output.GetBuffer(); // Output
-            MemoryBuffer<float> buffer2 = new_mod_flux_vec.GetBuffer(); // Input
-            MemoryBuffer<float> fluxBuf = Flux.GetBuffer(); // Input
-            MemoryBuffer<float> errorBuf = Error.GetBuffer(); // Input
+            MemoryBuffer1D<float, Stride1D.Dense> 
+                buffer = output.GetBuffer(), // Output
+                buffer2 = new_mod_flux_vec.GetBuffer(), // Input
+                fluxBuf = Flux.GetBuffer(), // Input
+                errorBuf = Error.GetBuffer(); // Input
 
 
-            kernelWithStream(gpu.accelerator.DefaultStream, buffer.Length, buffer.View, buffer2.View, fluxBuf.View, errorBuf.View , model_len);
+            kernelWithStream(gpu.accelerator.DefaultStream, buffer.IntExtent, buffer.View, buffer2.View, fluxBuf.View, errorBuf.View , model_len);
 
             gpu.accelerator.Synchronize();
 
@@ -1116,10 +1162,13 @@ namespace FALCON
                 chis[i] = output.GetRowAsArray(i,true).Sum();
             }
 
+            output.DecrementLiveCount();
+            new_mod_flux_vec.DecrementLiveCount();
+
             return chis;
         }
         // Kernel
-        static void CalcChiKernel(Index1 index, ArrayView<float> Output, ArrayView<float> InputMod_flux, ArrayView<float> InputDat_flux, ArrayView<float> InputDat_err, int model_len)
+        static void CalcChiKernel(Index1D index, ArrayView<float> Output, ArrayView<float> InputMod_flux, ArrayView<float> InputDat_flux, ArrayView<float> InputDat_err, int model_len)
         {
             Output[index] = XMath.Pow((InputMod_flux[index] - InputDat_flux[index % model_len]) / InputDat_err[index % model_len], 2f);
         }

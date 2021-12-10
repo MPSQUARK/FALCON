@@ -26,8 +26,8 @@ namespace FALCON
             t0,
             Tcmb0,
             Neff;
-        bool flat = true;
-        float[] m_nu;
+        readonly bool flat = true;
+        readonly float[] m_nu;
         double
             H0_s,
             critical_density0, 
@@ -52,8 +52,8 @@ namespace FALCON
             massivenu_mass,
             nu_y;
 
-        private Func<float, inv_efunc_scalar_args_struct, float> inv_efunc_scalar;
-        private inv_efunc_scalar_args_struct inv_efunc_scalar_args;
+        private Func<float, Inv_efunc_scalar_args_struct, float> inv_efunc_scalar;
+        private Inv_efunc_scalar_args_struct inv_efunc_scalar_args;
 
         // optimisation parameters
         float
@@ -103,7 +103,7 @@ namespace FALCON
                 else
                 {
                     this.massivenu = true;
-                    if (this.m_nu.Count() != this.nneutrinos)
+                    if (this.m_nu.Length != this.nneutrinos)
                     {
                         throw new Exception("Class Cosmology : func Initialise - Unexpected number of neutrino masses");
                     }
@@ -111,7 +111,7 @@ namespace FALCON
                     this.massivenu_mass = (from nu in this.m_nu
                                            where nu != 0
                                            select nu).ToArray();
-                    this.nmassivenu = this.massivenu_mass.Count();
+                    this.nmassivenu = this.massivenu_mass.Length;
                     this.nmasslessnu = this.nneutrinos - this.nmassivenu;
                 }
             }
@@ -123,7 +123,7 @@ namespace FALCON
 
                 if (this.massivenu)
                 {
-                    int length = this.massivenu_mass.Count();
+                    int length = this.massivenu_mass.Length;
                     this.nu_y = new float[length];
 
                     for (int i = 0; i < length; i++)
@@ -132,7 +132,7 @@ namespace FALCON
                     }
 
 
-                    this.Onu0 = (float)(this.Ogamma0 * nu_relative_density(0f));
+                    this.Onu0 = (float)(this.Ogamma0 * Nu_relative_density(0f));
 
                 }
                 else
@@ -150,8 +150,8 @@ namespace FALCON
 
             if (!this.massivenu)
             {
-                this.inv_efunc_scalar = flcdm_inv_efunc_nomnu;
-                this.inv_efunc_scalar_args = new inv_efunc_scalar_args_struct
+                this.inv_efunc_scalar = Flcdm_inv_efunc_nomnu;
+                this.inv_efunc_scalar_args = new Inv_efunc_scalar_args_struct
                 {
                     Om0 = this.Om0,
                     Ode0 = this.Ode0,
@@ -160,8 +160,8 @@ namespace FALCON
             }
             else
             {
-                this.inv_efunc_scalar = flcdm_inv_efunc;
-                this.inv_efunc_scalar_args = new inv_efunc_scalar_args_struct
+                this.inv_efunc_scalar = Flcdm_inv_efunc;
+                this.inv_efunc_scalar_args = new Inv_efunc_scalar_args_struct
                 {
                     Om0 = this.Om0,
                     Ode0 = this.Ode0,
@@ -181,7 +181,7 @@ namespace FALCON
         }
 
 
-        private struct inv_efunc_scalar_args_struct
+        private struct Inv_efunc_scalar_args_struct
         {
             public float Om0;
             public float Ode0;
@@ -194,7 +194,7 @@ namespace FALCON
         }
 
 
-        private float nu_relative_density(float z)
+        private float Nu_relative_density(float z)
         {
             // See Komatsu et al. 2011, eq 26 and the surrounding discussion
             float prefac = 0.22710731766f;  // 7/8 (4/11)^4/3 -- see any cosmo book
@@ -210,8 +210,8 @@ namespace FALCON
             float invp = 0.54644808743f;  // 1.0 / p
             float k = 0.3173f;
 
-            float[] rel_mass_per = new float[this.nu_y.Count()];
-            for (int i = 0; i < this.nu_y.Count(); i++)
+            float[] rel_mass_per = new float[this.nu_y.Length];
+            for (int i = 0; i < this.nu_y.Length; i++)
             {
                 rel_mass_per[i] = MathF.Pow(1f + MathF.Pow(k * (this.nu_y[i] / (1f + z)), p), invp);
             }
@@ -220,22 +220,22 @@ namespace FALCON
             return prefac * this.neff_per_nu * rel_mass;
         }
 
-        private float flcdm_inv_efunc_nomnu(float z, inv_efunc_scalar_args_struct args)
+        private float Flcdm_inv_efunc_nomnu(float z, Inv_efunc_scalar_args_struct args)
         {
             float opz = 1 + z;
             return MathF.Pow( MathF.Pow(opz,3f) * (opz * args.Or0 + args.Om0) + args.Ode0, -0.5f);
         }
 
-        private float flcdm_inv_efunc(float z, inv_efunc_scalar_args_struct args)
+        private float Flcdm_inv_efunc(float z, Inv_efunc_scalar_args_struct args)
         {
             float opz = 1f + z;
-            float Or0 = args.Ogamma0 * (1f + nufunc(opz, args.neff_per_nu, args.nmasslessnu, args.nu_y));
+            float Or0 = args.Ogamma0 * (1f + Nufunc(opz, args.neff_per_nu, args.nmasslessnu, args.nu_y));
             return MathF.Pow( MathF.Pow(opz,3f) * (opz * Or0 + args.Om0) + args.Ode0, -0.5f);
         }
 
-        private float nufunc(float opz, float neff_per_nu, float nmasslessnu, float[] nu_y)
+        private static float Nufunc(float opz, float neff_per_nu, float nmasslessnu, float[] nu_y)
         {
-            int N = nu_y.Count();
+            int N = nu_y.Length;
             float k = 0.3173f / opz;
             float rel_mass_sum = nmasslessnu;
 
@@ -254,18 +254,18 @@ namespace FALCON
 
         }
 
-        public float luminosity_distance(GPU gpu, float redshift)
+        public float Luminosity_distance(GPU gpu, float redshift)
         {
-            return (1f + redshift) * comoving_transverse_distance(gpu, redshift);
+            return (1f + redshift) * Comoving_transverse_distance(gpu, redshift);
         }
 
-        public float comoving_transverse_distance(GPU gpu, float redshift)
+        public float Comoving_transverse_distance(GPU gpu, float redshift)
         {
-            float dc = integral_comoving_distance(gpu, redshift);
+            float dc = Integral_comoving_distance(gpu, redshift);
             return dc;
         }
 
-        public float integral_comoving_distance(GPU gpu, float redshift)
+        public float Integral_comoving_distance(GPU gpu, float redshift)
         {
 
             return this.hubble_distance * GPU_Integration(gpu, redshift, 1e-8f);
@@ -273,7 +273,7 @@ namespace FALCON
         }
 
 
-        private float Integrate(Func<float, inv_efunc_scalar_args_struct, float> func, float z, float da, inv_efunc_scalar_args_struct args )
+        private static float Integrate(Func<float, Inv_efunc_scalar_args_struct, float> func, float z, float da, Inv_efunc_scalar_args_struct args )
         {
             int itter = (int)(z / da);
             float[] vals = new float[itter];
@@ -294,7 +294,7 @@ namespace FALCON
 
         //    AcceleratorStream Stream = gpu.CreateStream();
 
-        //    var kernelWithStream = gpu.LoadAutoGroupedKernel<Index1, ArrayView<float>, float, float, float, float, float, float, float>(GPU_IntegrationKernal);
+        //    var kernelWithStream = gpu.LoadAutoGroupedKernel<Index1D, ArrayView<float>, float, float, float, float, float, float, float>(GPU_IntegrationKernal);
 
         //    var buffer = gpu.Allocate<float>(length);
         //    buffer.MemSetToZero(Stream);
@@ -316,24 +316,32 @@ namespace FALCON
         // Integrates the cosmology func to get luminosity distance Asynchronously
         public float GPU_Integration(GPU gpu, float z, float dz)
         {
-            Vector opz = Vector.Linspace(gpu, 1, z, (int)(z / dz));
-            opz.IncrementLiveCount();
-            MemoryBuffer<float> opzBuffer = opz.GetBuffer();
+            // WARNING THIS NEEDS ATTENTION!!!
+            Vector opz = Vector.Linspace(gpu, 1, z, XMath.Abs((int)(z / dz)));
+            // WARNING THIS NEEDS ATTENTION!!!
 
-            var kernel = gpu.accelerator.LoadAutoGroupedKernel<Index1, ArrayView<float>, float, float, float, float, float, float, float>(GPU_IntegrationKernal);
-            kernel(gpu.accelerator.DefaultStream, opzBuffer.Length, opzBuffer.View, dz, (float)this.Ogamma0, this.Om0, this.Ode0, this.neff_per_nu, this.nmasslessnu, this.nu_y[0]);
+            opz.IncrementLiveCount();
+            MemoryBuffer1D<float, Stride1D.Dense> opzBuffer = opz.GetBuffer();
+
+            var kernel = gpu.accelerator.LoadAutoGroupedKernel<Index1D, ArrayView<float>, float, float, float, float, float, float, float>(GPU_IntegrationKernal);
+            kernel(gpu.accelerator.DefaultStream, opzBuffer.IntExtent, opzBuffer.View, dz, (float)this.Ogamma0, this.Om0, this.Ode0, this.neff_per_nu, this.nmasslessnu, this.nu_y[0]);
             gpu.accelerator.Synchronize();
 
             float sum = opz.Sum();
 
             opz.DecrementLiveCount();
 
+            // WARNING THIS NEEDS ATTENTION!!!
+            if (z < 0) { sum = -sum; }
+            // WARNING THIS NEEDS ATTENTION!!!
+
+
             return (1f + z) * this.hubble_distance * sum;
         }
 
 
         // KERNELS
-        static void GPU_IntegrationKernal(Index1 index, ArrayView<float> OutPut, float dz, float Ogamma0, float Om0, float Ode0, float neff_per_nu, float nmasslessnu, float nu_y)
+        static void GPU_IntegrationKernal(Index1D index, ArrayView<float> OutPut, float dz, float Ogamma0, float Om0, float Ode0, float neff_per_nu, float nmasslessnu, float nu_y)
         {
             float opz = 1f + (dz * index);
             float k = 0.3173f / opz;

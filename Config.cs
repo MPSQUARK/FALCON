@@ -9,6 +9,7 @@ using System.Management; // Uninstall later when system analytics unnessessary
 using System.IO;// Uninstall later when system analytics unnessessary
 
 using HDF5CSharp;
+using BAVCL;
 
 namespace FALCON
 {
@@ -24,105 +25,105 @@ namespace FALCON
         // CONFIG OF HARDWARE   
         public bool Has_Multi_GPU  = false;
 
-        public Accelerator GetHardware(Context context)
-        {
-            List<AcceleratorId> AcceleratorIds = new List<AcceleratorId>();
+        //public Accelerator GetHardware(Context context)
+        //{
+        //    List<AcceleratorId> AcceleratorIds = new List<AcceleratorId>();
             
-            List<byte> N_GPU_ids = new List<byte>();
-            List<byte> CL_GPU_ids = new List<byte>();
+        //    List<byte> N_GPU_ids = new List<byte>();
+        //    List<byte> CL_GPU_ids = new List<byte>();
 
-            foreach (var accelerator in Accelerator.Accelerators)
-            {
+        //    foreach (var accelerator in Accelerator.Accelerators)
+        //    {
 
-                string type = accelerator.AcceleratorType.ToString();
-                float id = 0;
+        //        string type = accelerator.AcceleratorType.ToString();
+        //        float id = 0;
 
-                switch (type)
-                {
-                    case "Cuda":
-                        AcceleratorIds.Add(accelerator);
-                        N_GPU_ids.Add((byte)id);
-                        id++;
-                        break;
+        //        switch (type)
+        //        {
+        //            case "Cuda":
+        //                AcceleratorIds.Add(accelerator);
+        //                N_GPU_ids.Add((byte)id);
+        //                id++;
+        //                break;
 
-                    case "OpenCL":
-                        AcceleratorIds.Add(accelerator);
-                        CL_GPU_ids.Add((byte)id);
-                        id++;
-                        break;
+        //            case "OpenCL":
+        //                AcceleratorIds.Add(accelerator);
+        //                CL_GPU_ids.Add((byte)id);
+        //                id++;
+        //                break;
 
-                    case "CPU":
-                        break;
+        //            case "CPU":
+        //                break;
 
-                    default:
-                        Console.WriteLine("Unknown hardware detected");
-                        break;
-                }
-            }
+        //            default:
+        //                Console.WriteLine("Unknown hardware detected");
+        //                break;
+        //        }
+        //    }
 
-            Accelerator gpu = Accelerator.Current;
+        //    Accelerator gpu = Accelerator.Current;
 
-            if (N_GPU_ids.Count >= 1)
-            {
-                gpu = Accelerator.Create(context, AcceleratorIds[N_GPU_ids[0]]);
-            }
-            else if (CL_GPU_ids.Count >= 1)
-            {
-                gpu = Accelerator.Create(context, AcceleratorIds[CL_GPU_ids[0]]);
-            }
+        //    if (N_GPU_ids.Count >= 1)
+        //    {
+        //        gpu = Accelerator.Create(context, AcceleratorIds[N_GPU_ids[0]]);
+        //    }
+        //    else if (CL_GPU_ids.Count >= 1)
+        //    {
+        //        gpu = Accelerator.Create(context, AcceleratorIds[CL_GPU_ids[0]]);
+        //    }
             
-            if (N_GPU_ids.Count + CL_GPU_ids.Count > 1)
-            {
-                this.Has_Multi_GPU = true;
-            }
+        //    if (N_GPU_ids.Count + CL_GPU_ids.Count > 1)
+        //    {
+        //        this.Has_Multi_GPU = true;
+        //    }
 
-            if (N_GPU_ids.Count + CL_GPU_ids.Count < 1)
-            {
-                throw new Exception("NO GPU DETECTED");
-            }
+        //    if (N_GPU_ids.Count + CL_GPU_ids.Count < 1)
+        //    {
+        //        throw new Exception("NO GPU DETECTED");
+        //    }
 
-            return gpu;
-        }
+        //    return gpu;
+        //}
 
-        // To be used for code performace analysis accross various hardware
-        public void RecordSystemInfo(Accelerator gpu)
-        {
+        //// To be used for code performace analysis accross various hardware
+        //public void RecordSystemInfo(Accelerator gpu)
+        //{
 
-            // Console.WriteLine("64 Bit operating system? : {0}", Environment.Is64BitOperatingSystem ? "Yes" : "No");
+        //    // Console.WriteLine("64 Bit operating system? : {0}", Environment.Is64BitOperatingSystem ? "Yes" : "No");
 
-            ManagementClass myManagementClass = new ManagementClass("Win32_Processor");
-            ManagementObjectCollection myManagementCollection = myManagementClass.GetInstances();
-            PropertyDataCollection myProperties = myManagementClass.Properties;
+        //    ManagementClass myManagementClass = new ManagementClass("Win32_Processor");
+        //    ManagementObjectCollection myManagementCollection = myManagementClass.GetInstances();
+        //    PropertyDataCollection myProperties = myManagementClass.Properties;
 
-            foreach (var obj in myManagementCollection)
-            {
+        //    foreach (var obj in myManagementCollection)
+        //    {
 
-                File.AppendAllText($"{Program.PathOfProgram}Log.txt", $"Device Name : {obj.Properties["SystemName"].Value}".Trim()+"\n");
-                File.AppendAllText($"{Program.PathOfProgram}Log.txt", $"CPU Model : {obj.Properties["Name"].Value}".Trim() +"\n");
-                File.AppendAllText($"{Program.PathOfProgram}Log.txt", $"CPU Base Frequency : {obj.Properties["CurrentClockSpeed"].Value}".Trim() +"\n");
-                File.AppendAllText($"{Program.PathOfProgram}Log.txt", $"CPU Thread Count : {obj.Properties["ThreadCount"].Value}".Trim()+"\n");
+        //        File.AppendAllText($"{Program.PathOfProgram}Log.txt", $"Device Name : {obj.Properties["SystemName"].Value}".Trim()+"\n");
+        //        File.AppendAllText($"{Program.PathOfProgram}Log.txt", $"CPU Model : {obj.Properties["Name"].Value}".Trim() +"\n");
+        //        File.AppendAllText($"{Program.PathOfProgram}Log.txt", $"CPU Base Frequency : {obj.Properties["CurrentClockSpeed"].Value}".Trim() +"\n");
+        //        File.AppendAllText($"{Program.PathOfProgram}Log.txt", $"CPU Thread Count : {obj.Properties["ThreadCount"].Value}".Trim()+"\n");
 
-            }
+        //    }
 
-            // Create main context
-            using (var context = new Context())
-            {
-                // Create default accelerator for the given accelerator id.
-                // Note that all accelerators have to be disposed before the global context is disposed
-                using (var accelerator = gpu)
-                {
+        //    // Create main context
+        //    using (var context = new Context())
+        //    {
+        //        // Create default accelerator for the given accelerator id.
+        //        // Note that all accelerators have to be disposed before the global context is disposed
+        //        using (var accelerator = gpu)
+        //        {
 
-                    File.AppendAllText($"{Program.PathOfProgram}Log.txt", $"GPU Name : {accelerator.Name}".Trim() + "\n");
-                    File.AppendAllText($"{Program.PathOfProgram}Log.txt", $"GPU Memory : {accelerator.MemorySize / MathF.Pow(1024f, 3f)}".Trim() + "\n");
-                    File.AppendAllText($"{Program.PathOfProgram}Log.txt", $"GPU Cores : {accelerator.MaxNumThreadsPerGroup}".Trim() + "\n");
+        //            File.AppendAllText($"{Program.PathOfProgram}Log.txt", $"GPU Name : {accelerator.Name}".Trim() + "\n");
+        //            File.AppendAllText($"{Program.PathOfProgram}Log.txt", $"GPU Memory : {accelerator.MemorySize / MathF.Pow(1024f, 3f)}".Trim() + "\n");
+        //            File.AppendAllText($"{Program.PathOfProgram}Log.txt", $"GPU Cores : {accelerator.MaxNumThreadsPerGroup}".Trim() + "\n");
 
-                    accelerator.Dispose();
-                }
-                context.Dispose();
-            }
+        //            accelerator.Dispose();
+        //        }
+        //        context.Dispose();
+        //    }
 
 
-        }
+        //}
 
 
 
@@ -187,15 +188,15 @@ namespace FALCON
 
 
         // SETUP
-        public void Setup()
+        public void Setup(GPU gpu)
         {
-            GetModelData();
+            GetModelData(gpu);
             GetDustData();
-            PreInitialiseDownGrade();
+            PreInitialiseDownGrade(gpu);
         }
 
         // CONFIG PRE-INITIALISE DATA
-        private void GetModelData()
+        private void GetModelData(GPU gpu)
         {
             // run this function upon Config Application - Pre-Initialisation Phase
 
@@ -215,7 +216,7 @@ namespace FALCON
                     Constants.Z = (float[])((Hdf5.ReadDatasetToArray<float>(id, "Z")).result);
                     Constants.s = (float[])((Hdf5.ReadDatasetToArray<float>(id, "s")).result);
 
-                    Constants.wavelength = (float[])((Hdf5.ReadDatasetToArray<float>(id, "wavelength")).result);
+                    Constants.wavelength = new Vector(gpu,(float[])((Hdf5.ReadDatasetToArray<float>(id, "wavelength")).result));
 
                     // READ IN FLUXGRID
                     float[,,,] fluxgrid;
@@ -240,18 +241,14 @@ namespace FALCON
 
 
                     // SET SLOPE AND SIDX
-                    switch (this.IMF)
+                    Constants.slope = this.IMF switch
                     {
-                        case 0: // kr
-                            Constants.slope = 1.3f;
-                            break;
-                        case 1: // ss
-                            Constants.slope = 2.35f;
-                            break;
-
-                        default:
-                            throw new Exception("Unrecognised IMF");
-                    }
+                        // kr
+                        0 => 1.3f,
+                        // ss
+                        1 => 2.35f,
+                        _ => throw new Exception("Unrecognised IMF"),
+                    };
                     Constants.sidx = Array.IndexOf(Constants.s, Constants.slope);
 
                 }
@@ -290,13 +287,13 @@ namespace FALCON
         /// <summary>
         /// Computes the Data Invariant section of DownGrade Function Outputting sres
         /// </summary>
-        private void PreInitialiseDownGrade()
+        private static void PreInitialiseDownGrade(GPU gpu)
         {
 
             if (Constants.r_model.Length == 1)
             {
                 
-                Constants.sres = new float[Constants.wavelength.Length];
+                Constants.sres = new Vector(gpu,new float[Constants.wavelength.Length]);
 
                 for (int i = 0; i < Constants.r_model.Length; i++)
                 {
@@ -305,17 +302,20 @@ namespace FALCON
                 return;
             }
 
-            Constants.sres = new float[Constants.r_model.Length];
+            Constants.sres = new(gpu, new float[Constants.r_model.Length]);
+            Constants.sres.SyncCPU();
             for (int i = 0; i < Constants.r_model.Length; i++)
             {
                 Constants.sres[i] = (float)Constants.r_model[i];
             }
             
+            Constants.sres.UpdateCache();
+
             return;
 
         }
 
-        private void GetDustData()
+        private static void GetDustData()
         {
             // Read in Hdf5 Data File/s
             string fileName = Program.PathOfProgram + @"DustMaps/dust.h5";

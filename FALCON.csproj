@@ -2,8 +2,8 @@
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <TargetFramework>net5.0</TargetFramework>
-    <StartupObject>MachineLearningSpectralFittingCode.Program</StartupObject>
+    <TargetFramework>net6.0</TargetFramework>
+    <StartupObject>FALCON.Program</StartupObject>
     <Platforms>AnyCPU;x64</Platforms>
   </PropertyGroup>
 
@@ -20,10 +20,10 @@
 
   <ItemGroup>
     <PackageReference Include="CSharpFITS" Version="1.1.0" />
-    <PackageReference Include="HDF5-CSharp" Version="1.12.3" />
-    <PackageReference Include="ILGPU" Version="0.10.1" />
-    <PackageReference Include="ILGPU.Algorithms" Version="0.10.0-beta1" />
-    <PackageReference Include="System.Management" Version="5.0.0" />
+    <PackageReference Include="HDF5-CSharp" Version="1.12.4" />
+    <PackageReference Include="ILGPU" Version="1.0.0" />
+    <PackageReference Include="ILGPU.Algorithms" Version="1.0.0" />
+    <PackageReference Include="System.Management" Version="6.0.0" />
   </ItemGroup>
 
   <ItemGroup>
@@ -31,7 +31,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\DataScience\DataScience\DataScience.csproj" />
+    <ProjectReference Include="..\BAVCL\BAVCL\BAVCL.csproj" />
   </ItemGroup>
 
 </Project>

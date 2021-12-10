@@ -1,10 +1,7 @@
-﻿using ILGPU;
-using ILGPU.Runtime;
-using System;
+﻿using System;
 using System.IO;
 using System.Threading.Tasks;
 using BAVCL;
-
 
 namespace FALCON
 {
@@ -18,15 +15,15 @@ namespace FALCON
         static void Main()
         {
             // Variable BLOCK
-            GPU gpu = new GPU();
+            GPU gpu = new(0.75f);
 
-            config = new Config();
-            cosmology = new Cosmology();
+            config = new();
+            cosmology = new();
 
             cosmology.Initialise();
 
             //UI UserInterface = new UI(config);
-            config.Setup();
+            config.Setup(gpu);
 
             //string Data_path = PathOfProgram + @"\Data\spec-0266-51602-0001.dat";
 
@@ -56,16 +53,34 @@ namespace FALCON
 
             //Parallel.For(0, files.Length, i =>
             //{
-            for (int i = 0; i < files.Length; i++)
+            //for(int i= 0; i<15; i++)
+            Parallel.For(0, files.Length, i =>
             {
                 (Wavelength[i], Flux[i], Error[i], redshift[i], vdisp[i], ra[i], dec[i]) = UtilityMethods.ReadDataFits(gpu, files[i]);
 
-                Spectral_Model spectral_Model = new Spectral_Model(files[i], config.Milky_Way_Reddening, config.HPF_Mode, config.N_Masked_Amstrongs, gpu);
-                //spectral_Model.InitialiseSpectraParameters(Wavelength[i], Flux[i], Error[i], redshift[i], new float[2] { ra[i], dec[i] }, vdisp[i], config.Instrument_Resolution);
+                //Console.WriteLine($"Redshift : {redshift[i]} @ index : {i}");
+                Spectral_Model spectral_Model = new(files[i], config.Milky_Way_Reddening, config.HPF_Mode, config.N_Masked_Amstrongs, gpu);
+                spectral_Model.InitialiseSpectraParameters(Wavelength[i], Flux[i], Error[i], redshift[i], new float[2] { ra[i], dec[i] }, vdisp[i], config.Instrument_Resolution);
 
-                //spectral_Model.Fit_models_to_data();
-            }
-                
+                spectral_Model.Fit_models_to_data();
+
+            });
+
+            GC.Collect();
+
+            Parallel.For(15, 30, i =>
+            {
+                (Wavelength[i], Flux[i], Error[i], redshift[i], vdisp[i], ra[i], dec[i]) = UtilityMethods.ReadDataFits(gpu, files[i]);
+
+                //Console.WriteLine($"Redshift : {redshift[i]} @ index : {i}");
+                Spectral_Model spectral_Model = new(files[i], config.Milky_Way_Reddening, config.HPF_Mode, config.N_Masked_Amstrongs, gpu);
+                spectral_Model.InitialiseSpectraParameters(Wavelength[i], Flux[i], Error[i], redshift[i], new float[2] { ra[i], dec[i] }, vdisp[i], config.Instrument_Resolution);
+
+                spectral_Model.Fit_models_to_data();
+
+            });
+
+
 
             //});
 
@@ -110,9 +125,9 @@ namespace FALCON
 
             watch.Stop();
             var elapsedMs = watch.ElapsedMilliseconds;
-            Console.WriteLine($"\nGalaxies analysed {files.Length}");
+            Console.WriteLine($"\nGalaxies analysed {15}");
             Console.WriteLine("Time Taken to Complete " + (elapsedMs * 0.001f).ToString() + "s");
-            Console.WriteLine("Time Taken to Complete per Spectra " + (elapsedMs * 0.001f / files.Length).ToString() + "s");
+            Console.WriteLine("Time Taken to Complete per Spectra " + (elapsedMs * 0.001f / 15).ToString() + "s");
 
             Console.WriteLine("Press Enter to close");
             Console.ReadLine();

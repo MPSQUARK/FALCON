@@ -110,7 +110,7 @@ namespace FALCON
         //
         public static float slope { get; set; } = 0f;
         public static int sidx { get; set; } = 0;
-        public static Vector sres { get; set; }
+        public static Vector sres;
 
         // Dust Maps
         public static float[,] ngp_dust { get; set; }

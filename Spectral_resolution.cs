@@ -11,8 +11,9 @@ namespace FALCON
     class Spectral_resolution
     {
         // Constructor
-        public Spectral_resolution(GPU gpu, Vector wave_in, Vector sres_in, bool log10_in = false, string interp_ext_in = "extrapolate")
+        public Spectral_resolution(GPU gpu, Vector wave_in, Vector sres_in, bool log10_in = false) //, string interp_ext_in = "extrapolate"
         {
+            
             this.gpu = gpu;
 
             // wave MUST be 1D and = to sres shape
@@ -27,7 +28,7 @@ namespace FALCON
 
             if (log10_in)
             {
-                this.dv = this.spectrum_velocity_scale(wave_in);
+                this.dv = this.Spectrum_velocity_scale(wave_in);
                 return;
             }
 
@@ -40,7 +41,7 @@ namespace FALCON
 
 
         // Variable Block
-        GPU gpu;
+        readonly GPU gpu;
         protected bool log10 { get; private set; }
         protected float dv { get; private set; }
         protected float dw { get; private set; }
@@ -52,29 +53,29 @@ namespace FALCON
         protected float min_sig { get; set; }
         public float sig_vo { get; set; }
         public Vector sig_pd { get; set; }
-        public bool[] sig_mask { get; set; }
+        public bool[] Sig_mask { get; set; }
 
 
         // Methods
-        private float spectrum_velocity_scale(Vector wave)
+        private float Spectrum_velocity_scale(Vector wave)
         {
-            return Constants.c_kms * this.spectral_coordinate_step(wave, log: true, _base: MathF.E);
+            return Constants.c_kms * this.Spectral_coordinate_step(wave, log: true, _base: MathF.E);
         }
 
-        private float spectral_coordinate_step(Vector wave, bool log = false, float _base = 10f)
+        private float Spectral_coordinate_step(Vector wave, bool log = false, float _base = 10f)
         {
             if (_base == MathF.E && log)
             {
                 wave.SyncCPU();
-                Vector wave_1 = new Vector(gpu, wave.Value[1..]);
-                Vector wave_2 = new Vector(gpu, wave.Value[..^1]);
+                Vector wave_1 = new(gpu, wave.Value[1..]);
+                Vector wave_2 = new(gpu, wave.Value[..^1]);
 
                 return (wave_1.Log_IP(_base) - wave_2.Log_IP(_base)).Mean();
             }
 
             if (log)
             {
-                return Vector.Diff_LogMult(gpu, new Vector(wave), (1f / MathF.Log(_base))).Value.Average();
+                return Vector.Diff(wave).Log_IP(_base).OP_IP(XMath.Rcp(XMath.Log(_base)), Operations.multiply).Mean();
             }
 
 
@@ -93,10 +94,11 @@ namespace FALCON
         {
             this.min_sig = min_sig_pix;
 
-            Vector _wave = new Vector(gpu, this.interpolator.X);
-            Vector _sres = new Vector(gpu, this.interpolator.Y);
+            Vector _wave = new(gpu, this.interpolator.X);
+            Vector _sres = new(gpu, this.interpolator.Y);
 
-            Vector interp_sres = new Vector(gpu,new float[_wave.Length],1, false);
+            Vector interp_sres = new(gpu,new float[_wave.Length],1, false);
+            _wave.SyncCPU();
 
             // This could be slow??
             for (int i = 0; i < _wave.Length; i++)
@@ -165,21 +167,22 @@ namespace FALCON
         }
         private Vector DetermineVariance(Vector wave, Vector interp_sres, Vector sres)
         {
-            Vector output = new Vector(gpu, new float[wave.Length]);
+            Vector output = new(gpu, new float[wave.Length]);
             output.IncrementLiveCount();
 
             wave.IncrementLiveCount();
             interp_sres.IncrementLiveCount();
             sres.IncrementLiveCount();
 
-            var kernelWithStream = gpu.accelerator.LoadAutoGroupedKernel<Index1, ArrayView<float>, ArrayView<float>, ArrayView<float>, ArrayView<float>, float, float>(DetermineVarianceKernel);
+            var kernelWithStream = gpu.accelerator.LoadAutoGroupedKernel<Index1D, ArrayView<float>, ArrayView<float>, ArrayView<float>, ArrayView<float>, float, float>(DetermineVarianceKernel);
 
-            MemoryBuffer<float> outBuffer = output.GetBuffer(); // Output
-            MemoryBuffer<float> waveBuffer = wave.GetBuffer(); //  Input
-            MemoryBuffer<float> interpsresBuffer = interp_sres.GetBuffer(); //  Input
-            MemoryBuffer<float> sresbuffer = sres.GetBuffer(); //  Input
+            MemoryBuffer1D<float, Stride1D.Dense> 
+                outBuffer = output.GetBuffer(),             // Output
+                waveBuffer = wave.GetBuffer(),              //  Input
+                interpsresBuffer = interp_sres.GetBuffer(), //  Input
+                sresbuffer = sres.GetBuffer();              //  Input
 
-            kernelWithStream(gpu.accelerator.DefaultStream, outBuffer.Length, outBuffer.View, waveBuffer.View, interpsresBuffer.View, sresbuffer.View, Constants.sig2FWHM, Constants.c_kms);
+            kernelWithStream(gpu.accelerator.DefaultStream, outBuffer.IntExtent, outBuffer.View, waveBuffer.View, interpsresBuffer.View, sresbuffer.View, Constants.sig2FWHM, Constants.c_kms);
 
             gpu.accelerator.Synchronize();
 
@@ -190,7 +193,7 @@ namespace FALCON
 
             return output;
         }
-        static void DetermineVarianceKernel(Index1 index, ArrayView<float> Output, ArrayView<float> wave,
+        static void DetermineVarianceKernel(Index1D index, ArrayView<float> Output, ArrayView<float> wave,
             ArrayView<float> interp_sres, ArrayView<float> sres, float fwhm, float c)
         {
             Output[index] = XMath.Pow((c / wave[index]), 2f) * XMath.Pow((wave[index] / fwhm), 2f) *
@@ -216,6 +219,7 @@ namespace FALCON
 
             // ISSUE - ALL INF
             this.sig_pd = sig2_pd;
+            this.sig_pd.SyncCPU();
 
             for (int i = 0; i < nindx.Length; i++)
             {
@@ -226,10 +230,10 @@ namespace FALCON
                 this.sig_pd[indx[i]] = 0f;
             }
 
-            this.sig_mask = new bool[this.sig_pd.Length];
-            for (int i = 0; i < this.sig_mask.Length; i++)
+            this.Sig_mask = new bool[this.sig_pd.Length];
+            for (int i = 0; i < this.Sig_mask.Length; i++)
             {
-                this.sig_mask[i] = this.sig_pd[i] < -this.min_sig;
+                this.Sig_mask[i] = this.sig_pd[i] < -this.min_sig;
             }
             return;
         }
@@ -257,7 +261,7 @@ namespace FALCON
             }
 
             output = new float[indxs.Length];
-            Vector selected_sig = new Vector(gpu,new float[indxs.Length],1, false);
+            Vector selected_sig = new(gpu,new float[indxs.Length],1, false);
             float[] selected_sres = new float[indxs.Length];
             for (int i = 0; i < output.Length; i++)
             {
@@ -267,6 +271,8 @@ namespace FALCON
             selected_sig.SyncCPU();
 
             pd2vd = convert_pd2vd(selected_sig);
+            pd2vd.SyncCPU();
+
             for (int i = 0; i < output.Length; i++)
             {
                 output[i] = 1f/ MathF.Sqrt(sig2fwhm_by_c_sq * MathF.Sqrt(pd2vd[i]) + selected_sres[i]);
@@ -304,10 +310,12 @@ namespace FALCON
             //this.sigma = (from sig in sigma
             //              select Math.Clamp(sig, minsig, sigma.Max())).ToArray();
             this.sigma = sigma;
+
+            float maxSigma = sigma.Max();
             for (int i = 0; i < sigma.Length; i++)
             {
                 if (this.sigma[i] < minsig) { this.sigma[i] = minsig; }
-                if (this.sigma[i] > sigma.Max()) { this.sigma[i] = sigma.Max(); }
+                if (this.sigma[i] > maxSigma) { this.sigma[i] = maxSigma; }
             }
 
             this.p = (int)MathF.Ceiling(this.sigma.Max() * nsig);
@@ -333,7 +341,7 @@ namespace FALCON
         private int p { get; set; }
         private int m { get; set; }
         private Vector kernel { get; set; }
-        private GPU gpu;
+        readonly private GPU gpu;
 
         public Vector Convolve(GPU gpu, Vector y) //ye=None
         {
@@ -345,16 +353,51 @@ namespace FALCON
             // assume ye is None
             // if ye = None
             Vector a = this.Create_a(y.Pull());
-            Vector result = Vector.MultiplySumAxZero(gpu, a, this.kernel); // PRECISION MAY NEED TO USE DOUBLES
+            Vector result = MultiplySumAxZero(a, this.kernel); // PRECISION MAY NEED TO USE DOUBLES
 
             // else ae = create_a(ye**2) { return sum(a* (this.kernel,axis=0)), sqrt(sum(ae*(this.kernel, axis=0)))}
 
             return result;
         }
 
+        public Vector MultiplySumAxZero(Vector vectorA, Vector vectorB)
+        {
+            vectorA.IncrementLiveCount();
+            vectorB.IncrementLiveCount();
+
+            Vector output = new(gpu, new float[vectorA.Columns]);
+
+            output.IncrementLiveCount();
+
+            var kernelWithStream = gpu.accelerator.LoadAutoGroupedKernel<Index1D, ArrayView<float>, ArrayView<float>, ArrayView<float>, int, int>(MultiplySumAxZeroKernel);
+
+            MemoryBuffer1D<float, Stride1D.Dense> 
+                buffer = output.GetBuffer(),    // Output
+                buffer2 = vectorA.GetBuffer(),  //  Input
+                buffer3 = vectorB.GetBuffer();  //  Input
+
+            kernelWithStream(gpu.accelerator.DefaultStream, vectorA.Columns, buffer.View, buffer2.View, buffer3.View, vectorA.Columns, vectorA.Length / vectorA.Columns);
+
+            gpu.accelerator.Synchronize();
+
+            vectorA.DecrementLiveCount();
+            vectorB.DecrementLiveCount();
+            output.DecrementLiveCount();
+
+            return output;
+        }
+        static void MultiplySumAxZeroKernel(Index1D index, ArrayView<float> Output, ArrayView<float> InputA, ArrayView<float> InputB, int columns, int rows)
+        {
+            for (int i = 0; i < rows; i++)
+            {
+                Output[index] += InputA[i * columns + index] * InputB[i * columns + index];
+            }
+
+        }
+
         private Vector Create_a(float[] y)
         {
-            List<float> a = new List<float>();
+            List<float> a = new();
 
             for (int i = 0; i < m; i++)
             {
@@ -373,7 +416,7 @@ namespace FALCON
             x2.IncrementLiveCount();
             sigma.IncrementLiveCount();
 
-            Vector output = new Vector(gpu, new float[x2.Length * sigma.Length], sigma.Length);
+            Vector output = new(gpu, new float[x2.Length * sigma.Length], sigma.Length);
             output.IncrementLiveCount();
 
 
@@ -381,8 +424,8 @@ namespace FALCON
             var buffer2 = x2.GetBuffer();       // INPUT
             var buffer3 = sigma.GetBuffer();    // INPUT
 
-            var kernelWithStream = gpu.accelerator.LoadAutoGroupedKernel<Index1, ArrayView<float>, ArrayView<float>, ArrayView<float>>(kernCalcKERNEL);
-            kernelWithStream(gpu.accelerator.DefaultStream, buffer3.Length, buffer.View, buffer2.View, buffer3.View);
+            var kernelWithStream = gpu.accelerator.LoadAutoGroupedKernel<Index1D, ArrayView<float>, ArrayView<float>, ArrayView<float>>(kernCalcKERNEL);
+            kernelWithStream(gpu.accelerator.DefaultStream, buffer3.IntExtent, buffer.View, buffer2.View, buffer3.View);
 
             gpu.accelerator.Synchronize();
 
@@ -393,7 +436,7 @@ namespace FALCON
             return output;
         }
 
-        static void kernCalcKERNEL(Index1 index, ArrayView<float> output, ArrayView<float> x2, ArrayView<float> sig)
+        static void kernCalcKERNEL(Index1D index, ArrayView<float> output, ArrayView<float> x2, ArrayView<float> sig)
         {
 
             //output[index] = XMath.Exp(x2[XMath.DivRoundDown(index, len)] * 0.5f / XMath.Pow(sig[index % len], 2f));
@@ -403,7 +446,7 @@ namespace FALCON
 
             for (int i = 0; i < x2.Length; i++)
             {
-                indx = index + sig.Length * i;
+                indx = index + sig.IntLength * i;
 
                 output[indx] = XMath.Exp((-x2[i] * 0.5f) / XMath.Pow(sig[index], 2f));
                 //partialoutput[i] = XMath.Exp((-x2[i] * 0.5f) / XMath.Pow(sig[index], 2f));
@@ -414,7 +457,7 @@ namespace FALCON
 
             for (int i = 0; i < x2.Length; i++)
             {
-                indx = index + sig.Length * i;
+                indx = index + sig.IntExtent * i;
                 //output[(int)(index + sig.Length * i)] = partialoutput[i] / sum;
 
                 output[indx] *= sum;

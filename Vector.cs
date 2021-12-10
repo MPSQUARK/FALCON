@@ -74,24 +74,17 @@ namespace FALCON.vector
 
             AcceleratorStream Stream = gpu.CreateStream();
 
-            var kernelWithStream = gpu.LoadAutoGroupedKernel<Index1, ArrayView<float>, ArrayView<float>, ArrayView<int>>(AccessSliceKernal);
+            var kernelWithStream = gpu.LoadAutoGroupedKernel<Index1D, ArrayView<float>, ArrayView<float>, ArrayView<int>>(AccessSliceKernal);
 
-            var buffer = gpu.Allocate<float>(OutPutVectorLength);
-            var buffer2 = gpu.Allocate<float>(vector.Value.Length);
-            var buffer3 = gpu.Allocate<int>(5);
-
-            buffer.MemSetToZero(Stream);
-            buffer2.MemSetToZero(Stream);
-            buffer3.MemSetToZero(Stream);
-
-            buffer2.CopyFrom(Stream, vector.Value, 0, 0, vector.Value.Length);
-            buffer3.CopyFrom(Stream, ChangeSelectLength, 0, 0, ChangeSelectLength.Length);
+            var buffer = gpu.Allocate1D(new float[OutPutVectorLength]);
+            var buffer2 = gpu.Allocate1D(vector.Value);
+            var buffer3 = gpu.Allocate1D(ChangeSelectLength);
 
             kernelWithStream(Stream, OutPutVectorLength, buffer.View, buffer2.View, buffer3.View);
 
             Stream.Synchronize();
 
-            float[] Output = buffer.GetAsArray(Stream);
+            float[] Output = buffer.GetAsArray1D(Stream);
 
             buffer.Dispose();
             buffer2.Dispose();
@@ -129,24 +122,17 @@ namespace FALCON.vector
 
             AcceleratorStream Stream = gpu.CreateStream();
 
-            var kernelWithStream = gpu.LoadAutoGroupedKernel<Index1, ArrayView<float>, ArrayView<float>, ArrayView<int>>(AccessSliceKernal);
+            var kernelWithStream = gpu.LoadAutoGroupedKernel<Index1D, ArrayView<float>, ArrayView<float>, ArrayView<int>>(AccessSliceKernal);
 
-            var buffer = gpu.Allocate<float>(OutPutVectorLength);
-            var buffer2 = gpu.Allocate<float>(vector.Value.Length);
-            var buffer3 = gpu.Allocate<int>(5);
-
-            buffer.MemSetToZero(Stream);
-            buffer2.MemSetToZero(Stream);
-            buffer3.MemSetToZero(Stream);
-
-            buffer2.CopyFrom(Stream, vector.Value, 0, 0, vector.Value.Length);
-            buffer3.CopyFrom(Stream, ChangeSelectLength, 0, 0, ChangeSelectLength.Length);
+            var buffer = gpu.Allocate1D(new float[OutPutVectorLength]);
+            var buffer2 = gpu.Allocate1D(vector.Value);
+            var buffer3 = gpu.Allocate1D(ChangeSelectLength);
 
             kernelWithStream(Stream, OutPutVectorLength, buffer.View, buffer2.View, buffer3.View);
 
             Stream.Synchronize();
 
-            float[] Output = buffer.GetAsArray(Stream);
+            float[] Output = buffer.GetAsArray1D(Stream);
 
             buffer.Dispose();
             buffer2.Dispose();
@@ -158,7 +144,7 @@ namespace FALCON.vector
         }
 
         // KERNEL
-        static void AccessSliceKernal(Index1 index, ArrayView<float> OutPut, ArrayView<float> Input, ArrayView<int> ChangeSelectLength)
+        static void AccessSliceKernal(Index1D index, ArrayView<float> OutPut, ArrayView<float> Input, ArrayView<int> ChangeSelectLength)
         {
             OutPut[index] = Input[
                 index * ChangeSelectLength[0] * ChangeSelectLength[4] + // iRcL
@@ -175,37 +161,32 @@ namespace FALCON.vector
 
             AcceleratorStream Stream = gpu.CreateStream();
 
-            var buffer = gpu.Allocate<float>(vector.Value.Length);
-            var buffer2 = gpu.Allocate<float>(vector.Value.Length);
+            var buffer = gpu.Allocate1D(new float[vector.Value.Length]);
+            var buffer2 = gpu.Allocate1D(vector.Value);
 
-            buffer.MemSetToZero(Stream);
-            buffer2.MemSetToZero(Stream);
-
-            buffer2.CopyFrom(Stream, vector.Value, 0, 0, vector.Value.Length);
-
-            var kernelWithStream = gpu.LoadAutoGroupedKernel<Index1, ArrayView<float>, ArrayView<float>, float>(ScalarProductKernal);
+            var kernelWithStream = gpu.LoadAutoGroupedKernel<Index1D, ArrayView<float>, ArrayView<float>, float>(ScalarProductKernal);
 
             switch (operation)
             {
                 case "*":
-                    kernelWithStream = gpu.LoadAutoGroupedKernel<Index1, ArrayView<float>, ArrayView<float>, float>(ScalarProductKernal);
+                    kernelWithStream = gpu.LoadAutoGroupedKernel<Index1D, ArrayView<float>, ArrayView<float>, float>(ScalarProductKernal);
                     break;
                 case "/":
-                    kernelWithStream = gpu.LoadAutoGroupedKernel<Index1, ArrayView<float>, ArrayView<float>, float>(ScalarDivideKernal);
+                    kernelWithStream = gpu.LoadAutoGroupedKernel<Index1D, ArrayView<float>, ArrayView<float>, float>(ScalarDivideKernal);
                     break;
                 case "+":
-                    kernelWithStream = gpu.LoadAutoGroupedKernel<Index1, ArrayView<float>, ArrayView<float>, float>(ScalarSumKernal);
+                    kernelWithStream = gpu.LoadAutoGroupedKernel<Index1D, ArrayView<float>, ArrayView<float>, float>(ScalarSumKernal);
                     break;
                 case "^*":  // flip the Vector e.g. 1/Vector then multiply by Scalar
-                    kernelWithStream = gpu.LoadAutoGroupedKernel<Index1, ArrayView<float>, ArrayView<float>, float>(ScalarProductInvVecKernal);
+                    kernelWithStream = gpu.LoadAutoGroupedKernel<Index1D, ArrayView<float>, ArrayView<float>, float>(ScalarProductInvVecKernal);
                     break;
             }
 
-            kernelWithStream(Stream, buffer.Length, buffer.View, buffer2.View, scalar);
+            kernelWithStream(Stream, buffer.IntExtent, buffer.View, buffer2.View, scalar);
 
             Stream.Synchronize();
 
-            float[] Output = buffer.GetAsArray(Stream);
+            float[] Output = buffer.GetAsArray1D(Stream);
 
             buffer.Dispose();
             buffer2.Dispose();
@@ -215,19 +196,19 @@ namespace FALCON.vector
             return new Vector(Output);
         }
         // KERNELS
-        static void ScalarProductKernal(Index1 index, ArrayView<float> OutPut, ArrayView<float> Input, float Scalar )
+        static void ScalarProductKernal(Index1D index, ArrayView<float> OutPut, ArrayView<float> Input, float Scalar )
         {
             OutPut[index] = Input[index] * Scalar;
         }
-        static void ScalarDivideKernal(Index1 index, ArrayView<float> OutPut, ArrayView<float> Input, float Scalar)
+        static void ScalarDivideKernal(Index1D index, ArrayView<float> OutPut, ArrayView<float> Input, float Scalar)
         {
             OutPut[index] = Input[index] / Scalar;
         }
-        static void ScalarSumKernal(Index1 index, ArrayView<float> OutPut, ArrayView<float> Input, float Scalar)
+        static void ScalarSumKernal(Index1D index, ArrayView<float> OutPut, ArrayView<float> Input, float Scalar)
         {
             OutPut[index] = Input[index] + Scalar;
         }
-        static void ScalarProductInvVecKernal(Index1 index, ArrayView<float> OutPut, ArrayView<float> Input, float Scalar)
+        static void ScalarProductInvVecKernal(Index1D index, ArrayView<float> OutPut, ArrayView<float> Input, float Scalar)
         {
             OutPut[index] = Scalar / Input[index];
         }
@@ -240,34 +221,29 @@ namespace FALCON.vector
 
             AcceleratorStream Stream = gpu.CreateStream();
 
-            var buffer = gpu.Allocate<double>(vector.Value.Length);
-            var buffer2 = gpu.Allocate<float>(vector.Value.Length);
+            var buffer = gpu.Allocate1D(new double[vector.Value.Length]);
+            var buffer2 = gpu.Allocate1D(vector.Value);
 
-            buffer.MemSetToZero(Stream);
-            buffer2.MemSetToZero(Stream);
-
-            buffer2.CopyFrom(Stream, vector.Value, 0, 0, vector.Value.Length);
-
-            var kernelWithStream = gpu.LoadAutoGroupedKernel<Index1, ArrayView<double>, ArrayView<float>, double>(ScalarProduct_DKernal);
+            var kernelWithStream = gpu.LoadAutoGroupedKernel<Index1D, ArrayView<double>, ArrayView<float>, double>(ScalarProduct_DKernal);
 
             switch (operation)
             {
                 case '*':
-                    kernelWithStream = gpu.LoadAutoGroupedKernel<Index1, ArrayView<double>, ArrayView<float>, double>(ScalarProduct_DKernal);
+                    kernelWithStream = gpu.LoadAutoGroupedKernel<Index1D, ArrayView<double>, ArrayView<float>, double>(ScalarProduct_DKernal);
                     break;
                 case '/':
-                    kernelWithStream = gpu.LoadAutoGroupedKernel<Index1, ArrayView<double>, ArrayView<float>, double>(ScalarDivide_DKernal);
+                    kernelWithStream = gpu.LoadAutoGroupedKernel<Index1D, ArrayView<double>, ArrayView<float>, double>(ScalarDivide_DKernal);
                     break;
                 case '+':
-                    kernelWithStream = gpu.LoadAutoGroupedKernel<Index1, ArrayView<double>, ArrayView<float>, double>(ScalarSum_DKernal);
+                    kernelWithStream = gpu.LoadAutoGroupedKernel<Index1D, ArrayView<double>, ArrayView<float>, double>(ScalarSum_DKernal);
                     break;
             }
 
-            kernelWithStream(Stream, buffer.Length, buffer.View, buffer2.View, scalar);
+            kernelWithStream(Stream, buffer.IntExtent, buffer.View, buffer2.View, scalar);
 
             Stream.Synchronize();
 
-            double[] Output = buffer.GetAsArray(Stream);
+            double[] Output = buffer.GetAsArray1D(Stream);
 
             buffer.Dispose();
             buffer2.Dispose();
@@ -277,15 +253,15 @@ namespace FALCON.vector
             return Output;
         }
         // KERNELS
-        static void ScalarProduct_DKernal(Index1 index, ArrayView<double> OutPut, ArrayView<float> Input, double Scalar)
+        static void ScalarProduct_DKernal(Index1D index, ArrayView<double> OutPut, ArrayView<float> Input, double Scalar)
         {
             OutPut[index] = Input[index] * Scalar;
         }
-        static void ScalarDivide_DKernal(Index1 index, ArrayView<double> OutPut, ArrayView<float> Input, double Scalar)
+        static void ScalarDivide_DKernal(Index1D index, ArrayView<double> OutPut, ArrayView<float> Input, double Scalar)
         {
             OutPut[index] = Input[index] / Scalar;
         }
-        static void ScalarSum_DKernal(Index1 index, ArrayView<double> OutPut, ArrayView<float> Input, double Scalar)
+        static void ScalarSum_DKernal(Index1D index, ArrayView<double> OutPut, ArrayView<float> Input, double Scalar)
         {
             OutPut[index] = Input[index] + Scalar;
         }
@@ -307,36 +283,32 @@ namespace FALCON.vector
 
             AcceleratorStream Stream = gpu.CreateStream();
 
-            var kernelWithStream = gpu.LoadAutoGroupedKernel<Index1, ArrayView<float>, ArrayView<float>, float, float>(ScalarProductSumKernal);
+            var kernelWithStream = gpu.LoadAutoGroupedKernel<Index1D, ArrayView<float>, ArrayView<float>, float, float>(ScalarProductSumKernal);
 
-            var buffer = gpu.Allocate<float>(vector.Value.Length);
-            var buffer2 = gpu.Allocate<float>(vector.Value.Length);
-            buffer.MemSetToZero(Stream);
-            buffer2.MemSetToZero(Stream);
-
-            buffer2.CopyFrom(Stream, vector.Value, 0, 0, vector.Value.Length);
+            var buffer = gpu.Allocate1D(new float[vector.Value.Length]);
+            var buffer2 = gpu.Allocate1D(vector.Value);
 
             switch (operation)
             {
                 case "*+":
-                    kernelWithStream = gpu.LoadAutoGroupedKernel<Index1, ArrayView<float>, ArrayView<float>, float, float>(ScalarProductSumKernal);
+                    kernelWithStream = gpu.LoadAutoGroupedKernel<Index1D, ArrayView<float>, ArrayView<float>, float, float>(ScalarProductSumKernal);
                     break;
                 case "/+":
-                    kernelWithStream = gpu.LoadAutoGroupedKernel<Index1, ArrayView<float>, ArrayView<float>, float, float>(ScalarDivideSumKernal);
+                    kernelWithStream = gpu.LoadAutoGroupedKernel<Index1D, ArrayView<float>, ArrayView<float>, float, float>(ScalarDivideSumKernal);
                     break;
                 case "+*":
-                    kernelWithStream = gpu.LoadAutoGroupedKernel<Index1, ArrayView<float>, ArrayView<float>, float, float>(ScalarSumProductKernal);
+                    kernelWithStream = gpu.LoadAutoGroupedKernel<Index1D, ArrayView<float>, ArrayView<float>, float, float>(ScalarSumProductKernal);
                     break;
                 case "+/":
-                    kernelWithStream = gpu.LoadAutoGroupedKernel<Index1, ArrayView<float>, ArrayView<float>, float, float>(ScalarSumDivideKernal);
+                    kernelWithStream = gpu.LoadAutoGroupedKernel<Index1D, ArrayView<float>, ArrayView<float>, float, float>(ScalarSumDivideKernal);
                     break;
             }
 
-            kernelWithStream(Stream, buffer.Length, buffer.View, buffer2.View, Multiple, Adder);
+            kernelWithStream(Stream, buffer.IntExtent, buffer.View, buffer2.View, Multiple, Adder);
 
             Stream.Synchronize();
 
-            float[] Output = buffer.GetAsArray(Stream);
+            float[] Output = buffer.GetAsArray1D(Stream);
 
             buffer.Dispose();
             buffer2.Dispose();
@@ -346,19 +318,19 @@ namespace FALCON.vector
             return new Vector(Output);
         }
         // KERNELS
-        static void ScalarProductSumKernal(Index1 index, ArrayView<float> OutPut, ArrayView<float> Input, float Multiplicator, float Adder)
+        static void ScalarProductSumKernal(Index1D index, ArrayView<float> OutPut, ArrayView<float> Input, float Multiplicator, float Adder)
         {
             OutPut[index] = Input[index] * Multiplicator + Adder;
         }
-        static void ScalarDivideSumKernal(Index1 index, ArrayView<float> OutPut, ArrayView<float> Input, float Divisor, float Adder)
+        static void ScalarDivideSumKernal(Index1D index, ArrayView<float> OutPut, ArrayView<float> Input, float Divisor, float Adder)
         {
             OutPut[index] = Input[index] / Divisor + Adder;
         }
-        static void ScalarSumProductKernal(Index1 index, ArrayView<float> OutPut, ArrayView<float> Input, float Multiplicator, float Adder)
+        static void ScalarSumProductKernal(Index1D index, ArrayView<float> OutPut, ArrayView<float> Input, float Multiplicator, float Adder)
         {
             OutPut[index] = (Input[index] + Adder) * Multiplicator;
         }
-        static void ScalarSumDivideKernal(Index1 index, ArrayView<float> OutPut, ArrayView<float> Input, float Divisor, float Adder)
+        static void ScalarSumDivideKernal(Index1D index, ArrayView<float> OutPut, ArrayView<float> Input, float Divisor, float Adder)
         {
             OutPut[index] = (Input[index] + Adder) / Divisor ;
         }
@@ -374,40 +346,34 @@ namespace FALCON.vector
 
             AcceleratorStream Stream = gpu.CreateStream();
 
-            var kernelWithStream = gpu.LoadAutoGroupedKernel<Index1, ArrayView<float>, ArrayView<float>, ArrayView<float>>(ConsecutiveProductKernal);
+            var kernelWithStream = gpu.LoadAutoGroupedKernel<Index1D, ArrayView<float>, ArrayView<float>, ArrayView<float>>(ConsecutiveProductKernal);
 
-            var buffer = gpu.Allocate<float>(vectorA.Value.Length); // Input
-            var buffer2 = gpu.Allocate<float>(vectorA.Value.Length); // Input
-            var buffer3 = gpu.Allocate<float>(vectorA.Value.Length); // Output
+            var buffer = gpu.Allocate1D(vectorA.Value); // Input
+            var buffer2 = gpu.Allocate1D(vectorB.Value); // Input
+            var buffer3 = gpu.Allocate1D(new float[vectorA.Value.Length]); // Output
 
-            buffer.MemSetToZero(Stream);
-            buffer2.MemSetToZero(Stream);
-            buffer3.MemSetToZero(Stream);
-
-            buffer.CopyFrom(Stream, vectorA.Value, 0, 0, vectorA.Value.Length);
-            buffer2.CopyFrom(Stream, vectorB.Value, 0, 0, vectorB.Value.Length);
 
             switch (operation)
             {
                 case '*':
-                    kernelWithStream = gpu.LoadAutoGroupedKernel<Index1, ArrayView<float>, ArrayView<float>, ArrayView<float>>(ConsecutiveProductKernal);
+                    kernelWithStream = gpu.LoadAutoGroupedKernel<Index1D, ArrayView<float>, ArrayView<float>, ArrayView<float>>(ConsecutiveProductKernal);
                     break;
                 case '+':
-                    kernelWithStream = gpu.LoadAutoGroupedKernel<Index1, ArrayView<float>, ArrayView<float>, ArrayView<float>>(ConsecutiveAdditionKernal);
+                    kernelWithStream = gpu.LoadAutoGroupedKernel<Index1D, ArrayView<float>, ArrayView<float>, ArrayView<float>>(ConsecutiveAdditionKernal);
                     break;
                 case '-':
-                    kernelWithStream = gpu.LoadAutoGroupedKernel<Index1, ArrayView<float>, ArrayView<float>, ArrayView<float>>(ConsecutiveSubtractKernal);
+                    kernelWithStream = gpu.LoadAutoGroupedKernel<Index1D, ArrayView<float>, ArrayView<float>, ArrayView<float>>(ConsecutiveSubtractKernal);
                     break;
                 case '/':
-                    kernelWithStream = gpu.LoadAutoGroupedKernel<Index1, ArrayView<float>, ArrayView<float>, ArrayView<float>>(ConsecutiveDivisionKernal);
+                    kernelWithStream = gpu.LoadAutoGroupedKernel<Index1D, ArrayView<float>, ArrayView<float>, ArrayView<float>>(ConsecutiveDivisionKernal);
                     break;
             }
 
-            kernelWithStream(Stream, buffer.Length, buffer.View, buffer2.View, buffer3.View);
+            kernelWithStream(Stream, buffer.IntExtent, buffer.View, buffer2.View, buffer3.View);
 
             Stream.Synchronize();
 
-            float[] Output = buffer3.GetAsArray(Stream);
+            float[] Output = buffer3.GetAsArray1D(Stream);
 
             buffer.Dispose();
             buffer2.Dispose();
@@ -418,25 +384,25 @@ namespace FALCON.vector
             return new Vector(Output);
         }
         // KERNEL
-        static void ConsecutiveProductKernal(Index1 index, ArrayView<float> InputA, ArrayView<float> InputB, ArrayView<float> OutPut )
+        static void ConsecutiveProductKernal(Index1D index, ArrayView<float> InputA, ArrayView<float> InputB, ArrayView<float> OutPut )
         {
 
             OutPut[index] = InputA[index] * InputB[index];
 
         }
-        static void ConsecutiveAdditionKernal(Index1 index, ArrayView<float> InputA, ArrayView<float> InputB, ArrayView<float> OutPut)
+        static void ConsecutiveAdditionKernal(Index1D index, ArrayView<float> InputA, ArrayView<float> InputB, ArrayView<float> OutPut)
         {
 
             OutPut[index] = InputA[index] + InputB[index];
 
         }
-        static void ConsecutiveSubtractKernal(Index1 index, ArrayView<float> InputA, ArrayView<float> InputB, ArrayView<float> OutPut)
+        static void ConsecutiveSubtractKernal(Index1D index, ArrayView<float> InputA, ArrayView<float> InputB, ArrayView<float> OutPut)
         {
 
             OutPut[index] = InputA[index] - InputB[index];
 
         }
-        static void ConsecutiveDivisionKernal(Index1 index, ArrayView<float> InputA, ArrayView<float> InputB, ArrayView<float> OutPut)
+        static void ConsecutiveDivisionKernal(Index1D index, ArrayView<float> InputA, ArrayView<float> InputB, ArrayView<float> OutPut)
         {
 
             OutPut[index] = InputA[index] / InputB[index];
@@ -462,40 +428,33 @@ namespace FALCON.vector
 
             AcceleratorStream Stream = gpu.CreateStream();
             
-            var kernelWithStream = gpu.LoadAutoGroupedKernel<Index1, ArrayView<float>, ArrayView<float>, ArrayView<float>, float>(ConsecutiveProduct2DKernel);
+            var kernelWithStream = gpu.LoadAutoGroupedKernel<Index1D, ArrayView<float>, ArrayView<float>, ArrayView<float>, float>(ConsecutiveProduct2DKernel);
             
-            var buffer = gpu.Allocate<float>(vectorA.Value.Length); // Output
-            var buffer2 = gpu.Allocate<float>(vectorA.Value.Length); // Input
-            var buffer3 = gpu.Allocate<float>(vectorA.Value.Length); // Input
-
-            buffer.MemSetToZero(Stream);
-            buffer2.MemSetToZero(Stream);
-            buffer3.MemSetToZero(Stream);
-
-            buffer2.CopyFrom(Stream, vectorA.Value, 0, 0, vectorA.Value.Length);
-            buffer3.CopyFrom(Stream, vectorB.Value, 0, 0, vectorB.Value.Length);
+            var buffer = gpu.Allocate1D(new float[vectorA.Value.Length]); // Output
+            var buffer2 = gpu.Allocate1D(vectorA.Value); // Input
+            var buffer3 = gpu.Allocate1D(vectorB.Value); // Input
 
             switch (operation)
             {
                 case '*':
-                    kernelWithStream = gpu.LoadAutoGroupedKernel<Index1, ArrayView<float>, ArrayView<float>, ArrayView<float>, float>(ConsecutiveProduct2DKernel);
+                    kernelWithStream = gpu.LoadAutoGroupedKernel<Index1D, ArrayView<float>, ArrayView<float>, ArrayView<float>, float>(ConsecutiveProduct2DKernel);
                     break;
                 case '+':
-                    kernelWithStream = gpu.LoadAutoGroupedKernel<Index1, ArrayView<float>, ArrayView<float>, ArrayView<float>, float>(ConsecutiveSum2DKernel);
+                    kernelWithStream = gpu.LoadAutoGroupedKernel<Index1D, ArrayView<float>, ArrayView<float>, ArrayView<float>, float>(ConsecutiveSum2DKernel);
                     break;
                 case '-':
-                    kernelWithStream = gpu.LoadAutoGroupedKernel<Index1, ArrayView<float>, ArrayView<float>, ArrayView<float>, float>(ConsecutiveSubtract2DKernel);
+                    kernelWithStream = gpu.LoadAutoGroupedKernel<Index1D, ArrayView<float>, ArrayView<float>, ArrayView<float>, float>(ConsecutiveSubtract2DKernel);
                     break;
                 case '/':
-                    kernelWithStream = gpu.LoadAutoGroupedKernel<Index1, ArrayView<float>, ArrayView<float>, ArrayView<float>, float>(ConsecutiveDivide2DKernel);
+                    kernelWithStream = gpu.LoadAutoGroupedKernel<Index1D, ArrayView<float>, ArrayView<float>, ArrayView<float>, float>(ConsecutiveDivide2DKernel);
                     break;
             }
 
-            kernelWithStream(Stream, buffer.Length, buffer.View, buffer2.View, buffer3.View, vectorA.Columns);
+            kernelWithStream(Stream, buffer.IntExtent, buffer.View, buffer2.View, buffer3.View, vectorA.Columns);
 
             Stream.Synchronize();
 
-            float[] Output = buffer.GetAsArray(Stream);
+            float[] Output = buffer.GetAsArray1D(Stream);
 
             buffer.Dispose();
             buffer2.Dispose();
@@ -506,19 +465,19 @@ namespace FALCON.vector
             return new Vector(Output, vectorA.Columns);
         }
         // KERNEL
-        static void ConsecutiveProduct2DKernel(Index1 index, ArrayView<float> Output, ArrayView<float> InputA, ArrayView<float> InputB, float Cols)
+        static void ConsecutiveProduct2DKernel(Index1D index, ArrayView<float> Output, ArrayView<float> InputA, ArrayView<float> InputB, float Cols)
         {
             Output[index] = InputA[index] * InputB[(int)XMath.RoundAwayFromZero(index % Cols)]; 
         }
-        static void ConsecutiveSum2DKernel(Index1 index, ArrayView<float> Output, ArrayView<float> InputA, ArrayView<float> InputB, float Cols)
+        static void ConsecutiveSum2DKernel(Index1D index, ArrayView<float> Output, ArrayView<float> InputA, ArrayView<float> InputB, float Cols)
         {
             Output[index] = InputA[index] + InputB[(int)XMath.RoundAwayFromZero(index % Cols)];
         }
-        static void ConsecutiveSubtract2DKernel(Index1 index, ArrayView<float> Output, ArrayView<float> InputA, ArrayView<float> InputB, float Cols)
+        static void ConsecutiveSubtract2DKernel(Index1D index, ArrayView<float> Output, ArrayView<float> InputA, ArrayView<float> InputB, float Cols)
         {
             Output[index] = InputA[index] - InputB[(int)XMath.RoundAwayFromZero(index % Cols)];
         }
-        static void ConsecutiveDivide2DKernel(Index1 index, ArrayView<float> Output, ArrayView<float> InputA, ArrayView<float> InputB, float Cols)
+        static void ConsecutiveDivide2DKernel(Index1D index, ArrayView<float> Output, ArrayView<float> InputA, ArrayView<float> InputB, float Cols)
         {
             Output[index] = InputA[index] / InputB[(int)XMath.RoundAwayFromZero(index % Cols)];
         }
@@ -541,25 +500,18 @@ namespace FALCON.vector
 
             AcceleratorStream Stream = gpu.CreateStream();
 
-            var kernelWithStream = gpu.LoadAutoGroupedKernel<Index1, ArrayView<float>, ArrayView<float>, ArrayView<float>, float, float>(ConsecutiveC_VDSP_2DKernel);
+            var kernelWithStream = gpu.LoadAutoGroupedKernel<Index1D, ArrayView<float>, ArrayView<float>, ArrayView<float>, float, float>(ConsecutiveC_VDSP_2DKernel);
 
-            var buffer = gpu.Allocate<float>(vectorA.Value.Length); // Output
-            var buffer2 = gpu.Allocate<float>(vectorA.Value.Length); // Input
-            var buffer3 = gpu.Allocate<float>(vectorA.Value.Length); // Input
-
-            buffer.MemSetToZero(Stream);
-            buffer2.MemSetToZero(Stream);
-            buffer3.MemSetToZero(Stream);
-
-            buffer2.CopyFrom(Stream, vectorA.Value, 0, 0, vectorA.Value.Length);
-            buffer3.CopyFrom(Stream, vectorB.Value, 0, 0, vectorB.Value.Length);
+            var buffer = gpu.Allocate1D(new float[vectorA.Value.Length]); // Output
+            var buffer2 = gpu.Allocate1D(vectorA.Value); // Input
+            var buffer3 = gpu.Allocate1D(vectorB.Value); // Input
 
 
-            kernelWithStream(Stream, buffer.Length, buffer.View, buffer2.View, buffer3.View, vectorA.Columns, scalar);
+            kernelWithStream(Stream, buffer.IntExtent, buffer.View, buffer2.View, buffer3.View, vectorA.Columns, scalar);
 
             Stream.Synchronize();
 
-            float[] Output = buffer.GetAsArray(Stream);
+            float[] Output = buffer.GetAsArray1D(Stream);
 
             buffer.Dispose();
             buffer2.Dispose();
@@ -570,7 +522,7 @@ namespace FALCON.vector
             return new Vector(Output, vectorA.Columns);
         }
         // KERNEL
-        static void ConsecutiveC_VDSP_2DKernel(Index1 index, ArrayView<float> Output, ArrayView<float> InputA, ArrayView<float> InputB, float Cols, float Scalar)
+        static void ConsecutiveC_VDSP_2DKernel(Index1D index, ArrayView<float> Output, ArrayView<float> InputA, ArrayView<float> InputB, float Cols, float Scalar)
         {
             Output[index] = (InputA[index] / InputB[(int)(index / Cols)]) * Scalar;
         }
@@ -580,21 +532,16 @@ namespace FALCON.vector
         {
             AcceleratorStream stream = gpu.CreateStream();
 
-            var kernelWithStream = gpu.LoadAutoGroupedKernel<Index1, ArrayView<float>, ArrayView<float>>(DiffKernel);
+            var kernelWithStream = gpu.LoadAutoGroupedKernel<Index1D, ArrayView<float>, ArrayView<float>>(DiffKernel);
 
-            MemoryBuffer<float> buffer = gpu.Allocate<float>(vectorA.Value.Length - 1); // Output
-            MemoryBuffer<float> buffer2 = gpu.Allocate<float>(vectorA.Value.Length   ); //  Input
+            MemoryBuffer1D<float, Stride1D.Dense> buffer = gpu.Allocate1D(new float[vectorA.Value.Length - 1]); // Output
+            MemoryBuffer1D<float, Stride1D.Dense> buffer2 = gpu.Allocate1D(vectorA.Value); //  Input
 
-            buffer.MemSetToZero(stream);
-            buffer2.MemSetToZero(stream);
-
-            buffer2.CopyFrom(stream, vectorA.Value, 0, 0, vectorA.Value.Length);
-
-            kernelWithStream(stream, buffer.Length, buffer.View, buffer2.View);
+            kernelWithStream(stream, buffer.IntExtent, buffer.View, buffer2.View);
 
             stream.Synchronize();
 
-            float[] Output = buffer.GetAsArray(stream);
+            float[] Output = buffer.GetAsArray1D(stream);
 
             buffer.Dispose();
             buffer2.Dispose();
@@ -603,7 +550,7 @@ namespace FALCON.vector
 
             return new Vector(Output);
         }
-        static void DiffKernel(Index1 index, ArrayView<float> Output, ArrayView<float> Input)
+        static void DiffKernel(Index1D index, ArrayView<float> Output, ArrayView<float> Input)
         {
             Output[index] = Input[index + 1] - Input[index];
         }
@@ -612,21 +559,16 @@ namespace FALCON.vector
         {
             AcceleratorStream stream = gpu.CreateStream();
 
-            var kernelWithStream = gpu.LoadAutoGroupedKernel<Index1, ArrayView<float>, ArrayView<float>, float>(DiffLogMultKernel);
+            var kernelWithStream = gpu.LoadAutoGroupedKernel<Index1D, ArrayView<float>, ArrayView<float>, float>(DiffLogMultKernel);
 
-            MemoryBuffer<float> buffer = gpu.Allocate<float>(vectorA.Value.Length - 1); // Output
-            MemoryBuffer<float> buffer2 = gpu.Allocate<float>(vectorA.Value.Length); //  Input
+            MemoryBuffer1D<float, Stride1D.Dense> buffer = gpu.Allocate1D(new float[vectorA.Value.Length - 1]); // Output
+            MemoryBuffer1D<float, Stride1D.Dense> buffer2 = gpu.Allocate1D(vectorA.Value); //  Input
 
-            buffer.MemSetToZero(stream);
-            buffer2.MemSetToZero(stream);
-
-            buffer2.CopyFrom(stream, vectorA.Value, 0, 0, vectorA.Value.Length);
-
-            kernelWithStream(stream, buffer.Length, buffer.View, buffer2.View, scalar);
+            kernelWithStream(stream, buffer.IntExtent, buffer.View, buffer2.View, scalar);
 
             stream.Synchronize();
 
-            float[] Output = buffer.GetAsArray(stream);
+            float[] Output = buffer.GetAsArray1D(stream);
 
             buffer.Dispose();
             buffer2.Dispose();
@@ -635,7 +577,7 @@ namespace FALCON.vector
 
             return new Vector(Output);
         }
-        static void DiffLogMultKernel(Index1 index, ArrayView<float> Output, ArrayView<float> Input, float scalar)
+        static void DiffLogMultKernel(Index1D index, ArrayView<float> Output, ArrayView<float> Input, float scalar)
         {
             Output[index] = (XMath.Log(Input[index + 1] - Input[index], XMath.E)) * scalar;
         }
@@ -644,21 +586,16 @@ namespace FALCON.vector
         {
             AcceleratorStream stream = gpu.CreateStream();
 
-            var kernelWithStream = gpu.LoadAutoGroupedKernel<Index1, ArrayView<float>, ArrayView<float>>(DiffLogKernel);
+            var kernelWithStream = gpu.LoadAutoGroupedKernel<Index1D, ArrayView<float>, ArrayView<float>>(DiffLogKernel);
 
-            MemoryBuffer<float> buffer = gpu.Allocate<float>(vectorA.Value.Length - 1); // Output
-            MemoryBuffer<float> buffer2 = gpu.Allocate<float>(vectorA.Value.Length); //  Input
+            MemoryBuffer1D<float, Stride1D.Dense> buffer = gpu.Allocate1D(new float[vectorA.Value.Length - 1]); // Output
+            MemoryBuffer1D<float, Stride1D.Dense> buffer2 = gpu.Allocate1D(vectorA.Value); //  Input
 
-            buffer.MemSetToZero(stream);
-            buffer2.MemSetToZero(stream);
-
-            buffer2.CopyFrom(stream, vectorA.Value, 0, 0, vectorA.Value.Length);
-
-            kernelWithStream(stream, buffer.Length, buffer.View, buffer2.View);
+            kernelWithStream(stream, buffer.IntExtent, buffer.View, buffer2.View);
 
             stream.Synchronize();
 
-            float[] Output = buffer.GetAsArray(stream);
+            float[] Output = buffer.GetAsArray1D(stream);
 
             buffer.Dispose();
             buffer2.Dispose();
@@ -667,7 +604,7 @@ namespace FALCON.vector
 
             return new Vector(Output);
         }
-        static void DiffLogKernel(Index1 index, ArrayView<float> Output, ArrayView<float> Input)
+        static void DiffLogKernel(Index1D index, ArrayView<float> Output, ArrayView<float> Input)
         {
             Output[index] = XMath.Log(Input[index + 1], XMath.E) - XMath.Log(Input[index], XMath.E);
         }
@@ -681,21 +618,16 @@ namespace FALCON.vector
 
             AcceleratorStream stream = gpu.CreateStream();
 
-            var kernelWithStream = gpu.LoadAutoGroupedKernel<Index1, ArrayView<float>, ArrayView<float>, float>(PowerKernel);
+            var kernelWithStream = gpu.LoadAutoGroupedKernel<Index1D, ArrayView<float>, ArrayView<float>, float>(PowerKernel);
 
-            MemoryBuffer<float> buffer = gpu.Allocate<float>(vectorA.Value.Length); // Output
-            MemoryBuffer<float> buffer2 = gpu.Allocate<float>(vectorA.Value.Length); //  Input
+            MemoryBuffer1D<float, Stride1D.Dense> buffer = gpu.Allocate1D(new float[vectorA.Value.Length]); // Output
+            MemoryBuffer1D<float, Stride1D.Dense> buffer2 = gpu.Allocate1D(vectorA.Value); //  Input
 
-            buffer.MemSetToZero(stream);
-            buffer2.MemSetToZero(stream);
-
-            buffer2.CopyFrom(stream, vectorA.Value, 0, 0, vectorA.Value.Length);
-
-            kernelWithStream(stream, buffer.Length, buffer.View, buffer2.View, pow);
+            kernelWithStream(stream, buffer.IntExtent, buffer.View, buffer2.View, pow);
 
             stream.Synchronize();
 
-            float[] Output = buffer.GetAsArray(stream);
+            float[] Output = buffer.GetAsArray1D(stream);
 
             buffer.Dispose();
             buffer2.Dispose();
@@ -705,7 +637,7 @@ namespace FALCON.vector
             return new Vector(Output);
 
         }
-        static void PowerKernel(Index1 index, ArrayView<float> Output, ArrayView<float> Input, float pow)
+        static void PowerKernel(Index1D index, ArrayView<float> Output, ArrayView<float> Input, float pow)
         {
             Output[index] = XMath.Pow(Input[index],pow);
         }
@@ -714,21 +646,16 @@ namespace FALCON.vector
         {
             AcceleratorStream stream = gpu.CreateStream();
 
-            var kernelWithStream = gpu.LoadAutoGroupedKernel<Index1, ArrayView<float>, ArrayView<float>>(PowerAbsKernel);
+            var kernelWithStream = gpu.LoadAutoGroupedKernel<Index1D, ArrayView<float>, ArrayView<float>>(PowerAbsKernel);
 
-            MemoryBuffer<float> buffer = gpu.Allocate<float>(vectorA.Value.Length); // Output
-            MemoryBuffer<float> buffer2 = gpu.Allocate<float>(vectorA.Value.Length); //  Input
+            MemoryBuffer1D<float, Stride1D.Dense> buffer = gpu.Allocate1D(new float[vectorA.Value.Length]); // Output
+            MemoryBuffer1D<float, Stride1D.Dense> buffer2 = gpu.Allocate1D(vectorA.Value); //  Input
 
-            buffer.MemSetToZero(stream);
-            buffer2.MemSetToZero(stream);
-
-            buffer2.CopyFrom(stream, vectorA.Value, 0, 0, vectorA.Value.Length);
-
-            kernelWithStream(stream, buffer.Length, buffer.View, buffer2.View);
+            kernelWithStream(stream, buffer.IntExtent, buffer.View, buffer2.View);
 
             stream.Synchronize();
 
-            float[] Output = buffer.GetAsArray(stream);
+            float[] Output = buffer.GetAsArray1D(stream);
 
             buffer.Dispose();
             buffer2.Dispose();
@@ -737,7 +664,7 @@ namespace FALCON.vector
 
             return new Vector(Output);
         }
-        static void PowerAbsKernel(Index1 index, ArrayView<float> Output, ArrayView<float> Input)
+        static void PowerAbsKernel(Index1D index, ArrayView<float> Output, ArrayView<float> Input)
         {
             Output[index] = Input[index] * XMath.Abs(Input[index]);
         }
@@ -746,24 +673,19 @@ namespace FALCON.vector
         {
             AcceleratorStream stream = gpu.CreateStream();
 
-            var kernelWithStream = gpu.LoadAutoGroupedKernel<Index1, ArrayView<float>, ArrayView<float>, ArrayView<float>, int, int>(MultiplySumAxZeroKernel);
+            var kernelWithStream = gpu.LoadAutoGroupedKernel<Index1D, ArrayView<float>, ArrayView<float>, ArrayView<float>, int, int>(MultiplySumAxZeroKernel);
 
-            MemoryBuffer<float> buffer = gpu.Allocate<float>(vectorA.Columns); // Output
-            MemoryBuffer<float> buffer2 = gpu.Allocate<float>(vectorA.Value.Length); //  Input
-            MemoryBuffer<float> buffer3 = gpu.Allocate<float>(vectorB.Value.Length); //  Input
+            MemoryBuffer1D<float, Stride1D.Dense>
+                buffer = gpu.Allocate1D(new float[vectorA.Columns]), // Output
+                buffer2 = gpu.Allocate1D(vectorA.Value), //  Input
+                buffer3 = gpu.Allocate1D(vectorB.Value); //  Input
 
-            buffer.MemSetToZero(stream);
-            buffer2.MemSetToZero(stream);
-            buffer3.MemSetToZero(stream);
-
-            buffer2.CopyFrom(stream, vectorA.Value, 0, 0, vectorA.Value.Length);
-            buffer3.CopyFrom(stream, vectorB.Value, 0, 0, vectorB.Value.Length);
 
             kernelWithStream(stream, vectorA.Columns, buffer.View, buffer2.View, buffer3.View, vectorA.Columns, vectorA.Value.Length / vectorA.Columns );
 
             stream.Synchronize();
 
-            float[] Output = buffer.GetAsArray(stream);
+            float[] Output = buffer.GetAsArray1D(stream);
 
             buffer.Dispose();
             buffer2.Dispose();
@@ -772,7 +694,7 @@ namespace FALCON.vector
 
             return new Vector(Output, vectorA.Columns);
         }
-        static void MultiplySumAxZeroKernel(Index1 index, ArrayView<float> Output, ArrayView<float> InputA, ArrayView<float> InputB, int columns, int rows)
+        static void MultiplySumAxZeroKernel(Index1D index, ArrayView<float> Output, ArrayView<float> InputA, ArrayView<float> InputB, int columns, int rows)
         {
             for (int i = 0; i < rows; i++)
             {
@@ -785,19 +707,15 @@ namespace FALCON.vector
         {
             AcceleratorStream stream = gpu.CreateStream();
 
-            var kernelWithStream = gpu.LoadAutoGroupedKernel<Index1, ArrayView<float>>(TenToPowerVectorKernel);
+            var kernelWithStream = gpu.LoadAutoGroupedKernel<Index1D, ArrayView<float>>(TenToPowerVectorKernel);
 
-            MemoryBuffer<float> buffer = gpu.Allocate<float>(vector.Length); // IO
-
-            buffer.MemSetToZero(stream);
-
-            buffer.CopyFrom(stream, vector, 0, 0, vector.Length);
+            MemoryBuffer1D<float, Stride1D.Dense> buffer = gpu.Allocate1D(vector); // IO
 
             kernelWithStream(stream, vector.Length, buffer.View);
 
             stream.Synchronize();
 
-            float[] Output = buffer.GetAsArray(stream);
+            float[] Output = buffer.GetAsArray1D(stream);
 
             buffer.Dispose();
 
@@ -806,7 +724,7 @@ namespace FALCON.vector
             return new Vector(Output, 1);
 
         }
-        static void TenToPowerVectorKernel(Index1 index, ArrayView<float> IO)
+        static void TenToPowerVectorKernel(Index1D index, ArrayView<float> IO)
         {
             IO[index] = XMath.Pow(10f, IO[index]);
         }
@@ -815,19 +733,15 @@ namespace FALCON.vector
         {
             AcceleratorStream stream = gpu.CreateStream();
 
-            var kernelWithStream = gpu.LoadAutoGroupedKernel<Index1, ArrayView<float>>(InvSqrtKernel);
+            var kernelWithStream = gpu.LoadAutoGroupedKernel<Index1D, ArrayView<float>>(InvSqrtKernel);
 
-            MemoryBuffer<float> buffer = gpu.Allocate<float>(vector.Length); // IO
+            MemoryBuffer1D<float, Stride1D.Dense> buffer = gpu.Allocate1D(vector); // IO
 
-            buffer.MemSetToZero(stream);
-
-            buffer.CopyFrom(stream, vector, 0, 0, vector.Length);
-
-            kernelWithStream(stream, vector.Length, buffer.View);
+            kernelWithStream(stream, buffer.IntExtent, buffer.View);
 
             stream.Synchronize();
 
-            float[] Output = buffer.GetAsArray(stream);
+            float[] Output = buffer.GetAsArray1D(stream);
 
             buffer.Dispose();
 
@@ -836,7 +750,7 @@ namespace FALCON.vector
             return new Vector(Output, 1);
 
         }
-        static void InvSqrtKernel(Index1 index, ArrayView<float> IO)
+        static void InvSqrtKernel(Index1D index, ArrayView<float> IO)
         {
             IO[index] = XMath.Rsqrt(IO[index]);
         }
@@ -877,20 +791,16 @@ namespace FALCON.vector
 
             AcceleratorStream Stream = gpu.CreateStream();
 
-            var kernelWithStream = gpu.LoadAutoGroupedKernel<Index1, ArrayView<float>, ArrayView<float>, float, float, float>(NormaliseKernel);
+            var kernelWithStream = gpu.LoadAutoGroupedKernel<Index1D, ArrayView<float>, ArrayView<float>, float, float, float>(NormaliseKernel);
 
-            var buffer = gpu.Allocate<float>(vector.Value.Length);
-            var buffer2 = gpu.Allocate<float>(vector.Value.Length);
-            buffer.MemSetToZero(Stream);
-            buffer2.MemSetToZero(Stream);
+            var buffer = gpu.Allocate1D(new float[vector.Value.Length]);
+            var buffer2 = gpu.Allocate1D(vector.Value);
 
-            buffer2.CopyFrom(Stream, vector.Value, 0, 0, vector.Value.Length);
-
-            kernelWithStream(Stream, buffer.Length, buffer.View, buffer2.View, Min, Max, Offset);
+            kernelWithStream(Stream, buffer.IntExtent, buffer.View, buffer2.View, Min, Max, Offset);
 
             Stream.Synchronize();
 
-            float[] Output = buffer.GetAsArray(Stream);
+            float[] Output = buffer.GetAsArray1D(Stream);
 
             buffer.Dispose();
             buffer2.Dispose();
@@ -900,7 +810,7 @@ namespace FALCON.vector
             return new Vector(Output);
         }
         // KERNEL
-        public static void NormaliseKernel(Index1 index, ArrayView<float> Output, ArrayView<float> Input, float Min, float Max, float Offset)
+        public static void NormaliseKernel(Index1D index, ArrayView<float> Output, ArrayView<float> Input, float Min, float Max, float Offset)
         {
             Output[index] = ((Input[index] - Min) / (Max - Min)) + Offset;
         }
