@@ -1,13 +1,8 @@
 ﻿using ILGPU;
 using ILGPU.Algorithms;
 using ILGPU.Runtime;
-using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using BAVCL;
+using BAVCL.Core;
 using System.Runtime.CompilerServices;
 
 namespace FALCON
@@ -20,11 +15,11 @@ namespace FALCON
                        ushort n_Masked_Amstrongs = 20,
                        GPU GPU = null)
         {
-            this.Path = path;
-            this.Milky_Way_Reddening = milky_Way_Reddening;
-            this.HPF_Mode = hPF_Mode;
-            this.N_Masked_Amstrongs = n_Masked_Amstrongs;
-            this.gpu = GPU;
+            Path = path;
+            Milky_Way_Reddening = milky_Way_Reddening;
+            HPF_Mode = hPF_Mode;
+            N_Masked_Amstrongs = n_Masked_Amstrongs;
+            gpu = GPU;
         }
 
         readonly GPU gpu;
@@ -100,31 +95,31 @@ namespace FALCON
         public void InitialiseSpectraParameters(BAVCL.Vector Data, float Redshift, float[] RA_DEC, float Velocity_Disp, float instrument_resolution) // also include emission lines masking
         {
 
-            this.Wavelength = Data.GetColumnAsVector(0);
-            this.Flux = Data.GetColumnAsVector(1);
-            this.Error = Data.GetColumnAsVector(2);
+            Wavelength = Data.GetColumnAsVector(0);
+            Flux = Data.GetColumnAsVector(1);
+            Error = Data.GetColumnAsVector(2);
 
             this.Redshift = Redshift;
             this.RA_DEC = RA_DEC;
-            this.Velocity_Dispersion = Velocity_Disp;
-            this.Trust_Flag = 1;
-            this.ObjID = 0;
+            Velocity_Dispersion = Velocity_Disp;
+            Trust_Flag = 1;
+            ObjID = 0;
 
-            this.Instrument_Resolution = Vector.Fill(gpu, instrument_resolution, this.Wavelength.Value.Length);
+            Instrument_Resolution = Vector.Fill(gpu, instrument_resolution, Wavelength.Value.Length);
 
-            if (this.Milky_Way_Reddening)
+            if (Milky_Way_Reddening)
             {
-                this.Ebv_MW = this.GetDustRADEC(this.RA_DEC, "ebv");
+                Ebv_MW = GetDustRADEC(this.RA_DEC, "ebv");
             }
             else
             {
-                this.Ebv_MW = 0f;
+                Ebv_MW = 0f;
             }
 
-            this.Restframe_Wavelength = this.Wavelength * (1 / (1 + this.Redshift));
+            Restframe_Wavelength = Wavelength * (1 / (1 + this.Redshift));
 
             // Generates the Filter Mask 2 Remove Bad data from the spectrum
-            Vector BadDataMask = this.GenerateDataMask(this.Flux, this.Error);
+            Vector BadDataMask = GenerateDataMask(Flux, Error);
             BadDataMask.SyncCPU();
 
             if (BadDataMask.Value.Contains(0f))
@@ -135,14 +130,14 @@ namespace FALCON
             else
             {
                 //Console.WriteLine("Data is Fine");
-            } 
+            }
 
             // CALCULATE LUMINOSITY DISTANCE in CM and convert to Mpc
-            this.Distance_Luminosity = UtilityMethods.Mpc2cm(Program.cosmology.GPU_Integration(gpu, this.Redshift, 1e-8f));
+            Distance_Luminosity = UtilityMethods.Mpc2cm(Config.Cosmology.GPU_Integration(gpu, this.Redshift, 1e-8f));
 
 
             // Initialise Model Section
-            this.InitialiseSPModel();
+            InitialiseSPModel();
 
         }
 
@@ -160,41 +155,41 @@ namespace FALCON
 
             this.Redshift = Redshift;
             this.RA_DEC = RA_DEC;
-            this.Velocity_Dispersion = Velocity_Disp;
-            this.Trust_Flag = 1;
-            this.ObjID = 0;
+            Velocity_Dispersion = Velocity_Disp;
+            Trust_Flag = 1;
+            ObjID = 0;
 
 
-            if (this.Milky_Way_Reddening)
+            if (Milky_Way_Reddening)
             {
-                this.Ebv_MW = this.GetDustRADEC(this.RA_DEC, "ebv");
+                Ebv_MW = GetDustRADEC(this.RA_DEC, "ebv");
             }
             else
             {
-                this.Ebv_MW = 0f;
+                Ebv_MW = 0f;
             }
 
-            this.Restframe_Wavelength = this.Wavelength * XMath.Rcp(1+this.Redshift);
+            Restframe_Wavelength = this.Wavelength * XMath.Rcp(1 + this.Redshift);
 
 
             // Remove Bad data from the spectrum
             // Generates the Filter Mask
 
-            Vector BadDataMask = this.GenerateDataMask(this.Flux, this.Error);
+            Vector BadDataMask = GenerateDataMask(this.Flux, this.Error);
             BadDataMask.SyncCPU();
 
             if (BadDataMask.Value.Contains(0f))
             {
                 // Filter Out the bad data
                 int goodvals = (int)BadDataMask.Sum();
-                    
+
                 float[] new_wavelength = new float[goodvals];
                 float[] new_restframewavelength = new float[goodvals];
                 float[] new_flux = new float[goodvals];
                 float[] new_error = new float[goodvals];
 
                 this.Wavelength.SyncCPU();
-                this.Restframe_Wavelength.SyncCPU();
+                Restframe_Wavelength.SyncCPU();
                 this.Flux.SyncCPU();
                 this.Error.SyncCPU();
 
@@ -203,14 +198,14 @@ namespace FALCON
                     if (BadDataMask.Value[i] != 1) { continue; }
 
                     new_wavelength[j] = this.Wavelength[i];
-                    new_restframewavelength[j] = this.Restframe_Wavelength[i];
+                    new_restframewavelength[j] = Restframe_Wavelength[i];
                     new_flux[j] = this.Flux.Value[i];
                     new_error[j] = this.Error.Value[i];
                     j++;
                 }
 
                 this.Wavelength.UpdateCache(new_wavelength);
-                this.Restframe_Wavelength.UpdateCache(new_restframewavelength);
+                Restframe_Wavelength.UpdateCache(new_restframewavelength);
                 this.Flux.UpdateCache(new_flux);
                 this.Error.UpdateCache(new_error);
 
@@ -221,14 +216,14 @@ namespace FALCON
                 //Console.WriteLine("Data is Fine");
             }
 
-            this.Instrument_Resolution = Vector.Fill(gpu, instrument_resolution, this.Wavelength.Length);
+            Instrument_Resolution = Vector.Fill(gpu, instrument_resolution, this.Wavelength.Length);
 
             // CALCULATE LUMINOSITY DISTANCE in CM and convert to Mpc
-            this.Distance_Luminosity = UtilityMethods.Mpc2cm(Program.cosmology.GPU_Integration(gpu, this.Redshift, 1e-8f));
+            Distance_Luminosity = UtilityMethods.Mpc2cm(Config.Cosmology.GPU_Integration(gpu, this.Redshift, 1e-8f));
 
 
             // Initialise Model Section
-            this.InitialiseSPModel();
+            InitialiseSPModel();
 
         }
 
@@ -237,7 +232,7 @@ namespace FALCON
         // Model Initialisation
         private void InitialiseSPModel()
         {
-            this.Velocity_dispersion_r = (int)(MathF.Round(this.Velocity_Dispersion / 5f) * 5f);
+            Velocity_dispersion_r = (int)(MathF.Round(Velocity_Dispersion / 5f) * 5f);
         }
 
 
@@ -251,7 +246,7 @@ namespace FALCON
             Vector output = new(gpu, new float[flux.Length]);
             output.IncrementLiveCount();
 
-            MemoryBuffer1D<float, Stride1D.Dense> 
+            MemoryBuffer1D<float, Stride1D.Dense>
                 buffer = output.GetBuffer(),
                 buffer2 = flux.GetBuffer(),
                 buffer3 = error.GetBuffer();
@@ -272,7 +267,9 @@ namespace FALCON
         static void GPU_GenerateDataMaskKernal(Index1D index, ArrayView<float> OutPut, ArrayView<float> flux, ArrayView<float> error)
         {
             // False means Exclude/Bad Data, True means Good Data
-            OutPut[index] = Convert.ToSingle(!(float.IsNaN(flux[index]) || float.IsInfinity(flux[index]) || (flux[index] <= 0f) || float.IsNaN(error[index]) || float.IsInfinity(error[index])));
+            var tst = !(float.IsNaN(flux[index]) || float.IsInfinity(flux[index]) || (flux[index] <= 0f) || float.IsNaN(error[index]) || float.IsInfinity(error[index]));
+            //Convert.ToSingle(!(float.IsNaN(flux[index]) || float.IsInfinity(flux[index]) || (flux[index] <= 0f) || float.IsNaN(error[index]) || float.IsInfinity(error[index])));
+            OutPut[index] = tst ? 1 : 0;
         }
 
         private float GetDustRADEC(float[] RADEC, string dustmap, bool interpolate = true)
@@ -415,7 +412,7 @@ namespace FALCON
 
             // enumerate over imfs (ii)
             // only 1 imf so, foreach ii in imfs
-            this.Get_Model(); //sets: model_wave_int,model_flux_int,age,metal
+            Get_Model(); //sets: model_wave_int,model_flux_int,age,metal
 
 
             // this.raw_model_wave_int = model_wave_int
@@ -425,7 +422,7 @@ namespace FALCON
 
             // Part 3 - correction from dust attenuation
             // -- LOG TIME COMPARISON -- CHECKPOINT
-            if (Program.config.HPF_Mode)
+            if (Config.HPF_Mode)
             {
 
             }
@@ -441,7 +438,7 @@ namespace FALCON
 
             // TEST CODE
             GenerateInterpSSP();
-            
+
 
 
         }
@@ -450,7 +447,7 @@ namespace FALCON
         {
 
             // M11 Models
-            if (Program.config.Model_Key % 2 == 1)
+            if (Config.Model_Key % 2 == 1)
             {
                 //var first_file = true;
                 // List of model_files = []
@@ -466,16 +463,16 @@ namespace FALCON
 
                 return;
             }
-            
+
             // MaStar Models
-            if (Program.config.Model_Key % 2 == 0)
+            if (Config.Model_Key % 2 == 0)
             {
                 // Gets Wavelengths from Model Data
-                this.Model_wavelength = Constants.wavelength;  // Lacking 1dp precision
+                Model_wavelength = Constants.wavelength;  // Lacking 1dp precision
                 // Gets Indexes of Models matching wavlengths
-                this.TrimModel();
+                TrimModel();
 
-                (int[] indx, Spectral_resolution res, VariableGaussianKernel vGK) = this.DownGradeModelInvar(this.Model_wavelength, this.Velocity_dispersion_r, Constants.sres, this.Instrument_Resolution);
+                (int[] indx, Spectral_resolution res, VariableGaussianKernel vGK) = DownGradeModelInvar(Model_wavelength, Velocity_dispersion_r, Constants.sres, Instrument_Resolution);
 
                 List<float> model_flux = new();
                 List<float> age_model = new();
@@ -483,14 +480,14 @@ namespace FALCON
 
 
                 Vector flux = new(gpu, new float[Constants.wavelength.Length], 1, false);
-                
+
 
                 // MAX AGE needs fixing to use data from the fits input
 
                 for (int i = 0; i < Constants.t.Length; i++)
                 {
                     //index i in t , t value
-                    if ((Constants.t[i] < Program.config.MinMax_Model_Age[0]) || (Constants.t[i] > Program.config.MinMax_Model_Age[1]))
+                    if ((Constants.t[i] < Config.MinMax_Model_Age[0]) || (Constants.t[i] > Config.MinMax_Model_Age[1]))
                     {
                         continue;
                     }
@@ -498,7 +495,7 @@ namespace FALCON
                     for (int j = 0; j < Constants.Z.Length; j++)
                     {
                         // index, Z value
-                        if (Constants.Z[j] < Program.config.MinMax_Model_Metalicity[0] || Constants.Z[j] > Program.config.MinMax_Model_Metalicity[1])
+                        if (Constants.Z[j] < Config.MinMax_Model_Metalicity[0] || Constants.Z[j] > Config.MinMax_Model_Metalicity[1])
                         {
                             continue;
                         }
@@ -517,16 +514,16 @@ namespace FALCON
                         // no conversion to vacuum needed, assuming models are in vacuum
 
                         // downgrades the model
-                        if (Program.config.Downgrade_models)
+                        if (Config.Downgrade_models)
                         {
-                            flux = this.DownGrade(gpu,flux, indx, res, vGK);
+                            flux = DownGrade(gpu, flux, indx, res, vGK);
                         }
-                        
+
 
                         // Reddens the models
-                        if (this.Ebv_MW != 0)
+                        if (Ebv_MW != 0)
                         {
-                            Vector attenuations = unred(Constants.wavelength, -this.Ebv_MW); // ebv = 0f - ebv_mw
+                            Vector attenuations = unred(Constants.wavelength, -Ebv_MW); // ebv = 0f - ebv_mw
 
                             try
                             {
@@ -543,16 +540,16 @@ namespace FALCON
                         {
                             model_flux.AddRange(flux.Pull());
                         }
-                        
+
                         age_model.Add(Constants.t[i]);
                         metal_model.Add(Constants.Z[j]); // In FireFly 10^{Z[j]} is used to get Metalicity in units of Solar Metalicity
 
                     }
                 }
 
-                this.Model_flux = new Vector(gpu, model_flux.ToArray(), Constants.wavelength.Length); // 2D flattened Array
-                this.Model_ages = age_model.ToArray();
-                this.Model_metals = metal_model.ToArray();
+                Model_flux = new Vector(gpu, model_flux.ToArray(), Constants.wavelength.Length); // 2D flattened Array
+                Model_ages = age_model.ToArray();
+                Model_metals = metal_model.ToArray();
 
                 return;
             }
@@ -563,32 +560,32 @@ namespace FALCON
         private void TrimModel()
         {
 
-            int length_Data = this.Restframe_Wavelength.Length;
-            int length_Mod  = this.Model_wavelength.Length;
+            int length_Data = Restframe_Wavelength.Length;
+            int length_Mod = Model_wavelength.Length;
             int[] indxs;
 
-            this.Model_wavelength.SyncCPU();
-            this.Restframe_Wavelength.SyncCPU();
+            Model_wavelength.SyncCPU();
+            Restframe_Wavelength.SyncCPU();
 
             // If data lies within the model
-            if (this.Model_wavelength[0] < this.Restframe_Wavelength[0] && this.Model_wavelength.Value[^1] > this.Restframe_Wavelength.Value[^1])
+            if (Model_wavelength[0] < Restframe_Wavelength[0] && Model_wavelength.Value[^1] > Restframe_Wavelength.Value[^1])
             {
 
-                float[] endVal = (from mwl in this.Model_wavelength.Value
-                                  select Math.Abs(mwl - this.Restframe_Wavelength.Value[^1])).ToArray();
+                float[] endVal = (from mwl in Model_wavelength.Value
+                                    select Math.Abs(mwl - Restframe_Wavelength.Value[^1])).ToArray();
 
                 int endIdx = Array.IndexOf(endVal, endVal.Min()) + 1;
 
 
-                float[] startVal = (from mwl in this.Model_wavelength.Value[0..(endIdx+1)]
-                                    select Math.Abs(mwl - this.Restframe_Wavelength.Value[0])).ToArray();
+                float[] startVal = (from mwl in Model_wavelength.Value[0..(endIdx + 1)]
+                                    select Math.Abs(mwl - Restframe_Wavelength.Value[0])).ToArray();
 
                 int startIdx = Array.IndexOf(startVal, startVal.Min());
 
 
                 if (endIdx - startIdx == length_Data)
                 {
-                    this.MatchingWavelengthMapping = Enumerable.Range(startIdx, endIdx - startIdx).ToArray();
+                    MatchingWavelengthMapping = Enumerable.Range(startIdx, endIdx - startIdx).ToArray();
                     return;
                 }
 
@@ -598,30 +595,30 @@ namespace FALCON
                     indxs = new int[length_Data];
                     indxs[0] = startIdx;
                     indxs[^1] = endIdx;
-                    for (int i = 1; i < indxs.Length-1; i++)
+                    for (int i = 1; i < indxs.Length - 1; i++)
                     {
-                        float[] matchtest = (from mwl in this.Model_wavelength.Value[0..endIdx]
-                                             select Math.Abs(mwl - this.Restframe_Wavelength[i])).ToArray();
+                        float[] matchtest = (from mwl in Model_wavelength.Value[0..endIdx]
+                                                select Math.Abs(mwl - Restframe_Wavelength[i])).ToArray();
                         indxs[i] = Array.IndexOf(matchtest, matchtest.Min());
                     }
 
-                    this.MatchingWavelengthMapping = indxs;
+                    MatchingWavelengthMapping = indxs;
                     return;
                 }
 
             }
 
             // If the data lies outside the model
-            this.DataLiesOutsideModel = true;
+            DataLiesOutsideModel = true;
 
             indxs = new int[length_Data];
-            for (int i = 0; i < this.Restframe_Wavelength.Length; i++)
+            for (int i = 0; i < Restframe_Wavelength.Length; i++)
             {
-                float[] matchtest = (from mwl in this.Model_wavelength.Value
-                                     select Math.Abs(mwl - this.Restframe_Wavelength[i])).ToArray();
+                float[] matchtest = (from mwl in Model_wavelength.Value
+                                     select Math.Abs(mwl - Restframe_Wavelength[i])).ToArray();
                 indxs[i] = Array.IndexOf(matchtest, matchtest.Min());
             }
-            this.MatchingWavelengthMapping = indxs;
+            MatchingWavelengthMapping = indxs;
 
             //Console.WriteLine("WARNING TRIMMODEL FUNC REACHED UNFINISHED CODE");
 
@@ -635,7 +632,7 @@ namespace FALCON
 
             for (int i = 0, j = 0; i < mod_wavelength.Length; i++)
             {
-                if (this.MatchingWavelengthMapping[..^1].Contains(i))
+                if (MatchingWavelengthMapping[..^1].Contains(i))
                 {
                     j++;
                 }
@@ -717,8 +714,6 @@ namespace FALCON
             //    }
             //}
 
-
-
             return (indx, res, vGK);
         }
 
@@ -726,7 +721,7 @@ namespace FALCON
         {
 
             Match_spectral_resolution(gpu, flux, indx, res, vGK);
-            
+
             // Call match_spectral_resolution(mod_wavelength, flux, sres, mod_wavelength, new_sres, min_sig_pix=0.0,
             // log10=log_wave, new_log10=log_wave)
             // get : new_flux, matched_sres, sigma_offset, new_mask
@@ -827,24 +822,24 @@ namespace FALCON
 
         private void NormaliseSpec()
         {
-            float data_norm = UtilityMethods.Median(this.Flux.Pull());                 
-            int num_mods = this.Model_flux.Length / this.Model_flux.Columns;     // 198
-            
-            Vector model_norm = new(gpu, new float[num_mods],1,false);                                 
+            float data_norm = UtilityMethods.Median(Flux.Pull());
+            int num_mods = Model_flux.Length / Model_flux.Columns;     // 198
+
+            Vector model_norm = new(gpu, new float[num_mods], 1, false);
             float[] mass_factor = new float[num_mods];
 
-            this.Model_flux.SyncCPU();
+            Model_flux.SyncCPU();
             for (int i = 0; i < num_mods; i++)
             {
-                model_norm[i] = UtilityMethods.Median(this.Model_flux.GetRowAsArray(i,true)); 
-                mass_factor[i] = data_norm / model_norm[i];                            
+                model_norm[i] = UtilityMethods.Median(Model_flux.GetRowAsArray(i, true));
+                mass_factor[i] = data_norm / model_norm[i];
             }
 
             model_norm.UpdateCache();
 
             // OVER-WRITES MODEL FLUX WITH THE NORMALISED MODEL FLUX
-            this.Model_flux = ConsecutiveCompoundOperation2D(this.Model_flux, model_norm, data_norm);
-            this.Mass_factor = mass_factor;
+            Model_flux = ConsecutiveCompoundOperation2D(Model_flux, model_norm, data_norm);
+            Mass_factor = mass_factor;
 
         }
 
@@ -897,21 +892,21 @@ namespace FALCON
         public float CalculateChiSqu(int model)
         {
             // Get length of Data
-            var length = this.Restframe_Wavelength.Value.Length;
+            var length = Restframe_Wavelength.Value.Length;
 
-            this.Restframe_Wavelength.SyncCPU();
+            Restframe_Wavelength.SyncCPU();
 
             // Finds the closest start value
             //float Closest_Start_Val = this.Model_wavelength.OrderBy(n => Math.Abs(this.Restframe_Wavelength.Value[0] - n)).First();
 
-            float Closest_Start_Val = (this.Restframe_Wavelength[0] - this.Model_wavelength).AbsX_IP().Min();
+            float Closest_Start_Val = (Restframe_Wavelength[0] - Model_wavelength).AbsX_IP().Min();
 
 
             // Gets Index of Closest Value
-            int idx_closest = Array.IndexOf(this.Model_wavelength.Pull(), Closest_Start_Val);
+            int idx_closest = Array.IndexOf(Model_wavelength.Pull(), Closest_Start_Val);
 
             // Select the Model Flux for the Model
-            float[] model_flux = this.Model_flux.Value[((model * this.Model_flux.Columns) + idx_closest)..((model * this.Model_flux.Columns) + idx_closest + length)];
+            float[] model_flux = Model_flux.Value[((model * Model_flux.Columns) + idx_closest)..((model * Model_flux.Columns) + idx_closest + length)];
 
             // Get the Length
             //int length = this.Model_flux.Columns;
@@ -920,31 +915,31 @@ namespace FALCON
             float sum = 0f;
             for (int j = 0; j < model_flux.Length; j++)
             {
-                sum += MathF.Pow(((model_flux[j] - this.Flux.Value[j]) / this.Error.Value[j]), 2f);
+                sum += MathF.Pow(((model_flux[j] - Flux.Value[j]) / Error.Value[j]), 2f);
             }
 
             return sum;
         }
-        
+
         // will combine together SSP 50:50, 30:30:30, 25:25:25:25, 20:20:20:20:20
         private void GenerateInterpSSP()
         {
-            int totlen = this.Model_flux.Length;
-            int lenOneModel = this.Model_flux.Columns;
+            int totlen = Model_flux.Length;
+            int lenOneModel = Model_flux.Columns;
             int noModels = totlen / lenOneModel;
 
             //noModels = 6;
 
             var kernelWithStream = gpu.accelerator.LoadAutoGroupedKernel<Index1D, ArrayView<float>, ArrayView<float>, ArrayView<int>, int>(TrimDownFlux);
 
-            Vector trimmedflux = new(gpu, new float[this.MatchingWavelengthMapping.Length * noModels], this.MatchingWavelengthMapping.Length);
+            Vector trimmedflux = new(gpu, new float[MatchingWavelengthMapping.Length * noModels], MatchingWavelengthMapping.Length);
             trimmedflux.IncrementLiveCount();
 
 
-            MemoryBuffer1D<float,Stride1D.Dense> 
+            MemoryBuffer1D<float, Stride1D.Dense>
                 buffer = trimmedflux.GetBuffer(),         // Output
-                buffer2 = this.Model_flux.GetBuffer();    //  Input
-            MemoryBuffer1D<int, Stride1D.Dense> buffer3 = gpu.accelerator.Allocate1D(this.MatchingWavelengthMapping); //  Input
+                buffer2 = Model_flux.GetBuffer();    //  Input
+            MemoryBuffer1D<int, Stride1D.Dense> buffer3 = gpu.accelerator.Allocate1D(MatchingWavelengthMapping); //  Input
 
             kernelWithStream(gpu.accelerator.DefaultStream, noModels, buffer.View, buffer2.View, buffer3.View, lenOneModel);
 
@@ -959,13 +954,13 @@ namespace FALCON
             Vector Chis = new(gpu, new float[noModels]);
             Chis.IncrementLiveCount();
 
-            MemoryBuffer1D<float, Stride1D.Dense> 
+            MemoryBuffer1D<float, Stride1D.Dense>
                 buffer_chis = Chis.GetBuffer(), //  Output
-                buffer_data_flux = this.Flux.GetBuffer(), //  Input
-                buffer_data_err = this.Error.GetBuffer(); //  Input
+                buffer_data_flux = Flux.GetBuffer(), //  Input
+                buffer_data_err = Error.GetBuffer(); //  Input
 
 
-            kernelWithStream2(gpu.accelerator.DefaultStream, noModels, buffer_chis.View, buffer_data_flux.View, buffer_data_err.View, buffer.View, this.Flux.Length);
+            kernelWithStream2(gpu.accelerator.DefaultStream, noModels, buffer_chis.View, buffer_data_flux.View, buffer_data_err.View, buffer.View, Flux.Length);
 
             gpu.accelerator.Synchronize();
 
@@ -988,11 +983,11 @@ namespace FALCON
             ChisG1.IncrementLiveCount();
 
             MemoryBuffer1D<float, Stride1D.Dense> buffer_chis2 = ChisG1.GetBuffer(); //  Output
-            MemoryBuffer1D<int, Stride1D.Dense> 
+            MemoryBuffer1D<int, Stride1D.Dense>
                 buffer_X = gpu.accelerator.Allocate1D(pairX.ToArray()), //  Input
                 buffer_Y = gpu.accelerator.Allocate1D(pairY.ToArray()); //  Input
 
-            kernelWithStream3(gpu.accelerator.DefaultStream, pairX.Count, buffer_chis2.View, buffer_data_flux.View, buffer_data_err.View, buffer.View, buffer_X.View, buffer_Y.View, this.Flux.Length);
+            kernelWithStream3(gpu.accelerator.DefaultStream, pairX.Count, buffer_chis2.View, buffer_data_flux.View, buffer_data_err.View, buffer.View, buffer_X.View, buffer_Y.View, Flux.Length);
 
             gpu.accelerator.Synchronize();
 
@@ -1007,12 +1002,12 @@ namespace FALCON
 
             //Console.WriteLine($"best model is {pairX[best_model]} : {pairY[best_model]} with a chi of : {ChisG1.Min() / this.Flux.Value.Length}, with {this.Flux.Value.Length} degrees of freedom");
 
-            RecordData(Array.IndexOf(Chis.Pull(), Chis.Min()), Chis.Min()/this.Flux.Length, new int[2] {pairX[best_model], pairY[best_model]}, ChisG1.Min() / this.Flux.Length);
+            RecordData(Array.IndexOf(Chis.Pull(), Chis.Min()), Chis.Min() / Flux.Length, new int[2] { pairX[best_model], pairY[best_model] }, ChisG1.Min() / Flux.Length);
 
             trimmedflux.DecrementLiveCount();
             Chis.DecrementLiveCount();
             ChisG1.DecrementLiveCount();
-        } 
+        }
 
         // Kernels
         static void TrimDownFlux(Index1D index, ArrayView<float> Output, ArrayView<float> Fluxes, ArrayView<int> idxs, int fluxlen)
@@ -1027,7 +1022,7 @@ namespace FALCON
             float sum = 0f;
             for (int i = 0; i < Modellen; i++)
             {
-                sum += XMath.Pow( (ModelFlux[index*Modellen + i] - DataFlux[i]) / DataError[i], 2f);
+                sum += XMath.Pow((ModelFlux[index * Modellen + i] - DataFlux[i]) / DataError[i], 2f);
             }
 
             Chis[index] = sum;
@@ -1038,7 +1033,7 @@ namespace FALCON
             float sum = 0f;
             for (int i = 0; i < Modellen; i++)
             {
-                sum += XMath.Pow(( ((ModelFlux[Modellen * X[index] + i] + ModelFlux[Modellen * Y[index] + i]) * 0.5f) - DataFlux[i]) / DataError[i], 2f);
+                sum += XMath.Pow((((ModelFlux[Modellen * X[index] + i] + ModelFlux[Modellen * Y[index] + i]) * 0.5f) - DataFlux[i]) / DataError[i], 2f);
             }
 
             Chis[index] = sum;
@@ -1048,31 +1043,31 @@ namespace FALCON
         // record the data output
         private void RecordData(int SSPmodelnum, float SSPchi, int[] dualsspmodelnum, float dualsspchi)
         {
-            string data = this.Path.Replace("/Data", "/Output").Replace(".fits","") + ".txt";
+            string data = Path.Replace("/Data", "/Output").Replace(".fits", "") + ".txt";
             File.WriteAllText(data, "");
 
             File.AppendAllText(data, "Restframe Wavelength of Data :\n");
-            File.AppendAllText(data, string.Join(" ", this.Restframe_Wavelength.Pull()));
+            File.AppendAllText(data, string.Join(" ", Restframe_Wavelength.Pull()));
 
             File.AppendAllText(data, "\nFlux of Data : \n");
-            File.AppendAllText(data, string.Join(" ", this.Flux.Pull()));
+            File.AppendAllText(data, string.Join(" ", Flux.Pull()));
 
             File.AppendAllText(data, "\nError of Data : \n");
-            File.AppendAllText(data, string.Join(" ", this.Error.Pull()));
+            File.AppendAllText(data, string.Join(" ", Error.Pull()));
 
             File.AppendAllText(data, "\nModel Wavelengths : \n");
-            File.AppendAllText(data, string.Join(" ", this.Model_wavelength.Pull()));
+            File.AppendAllText(data, string.Join(" ", Model_wavelength.Pull()));
 
 
             File.AppendAllText(data, "\n\nBest Single Model Fit : \n");
             File.AppendAllText(data, $"\nModel no : {SSPmodelnum} \n");
             File.AppendAllText(data, $"\nModel chi : {SSPchi} \n");
-            File.AppendAllText(data, $"\nGalaxy Age Predicted : {this.Model_ages[SSPmodelnum]} Gyr \n");
-            File.AppendAllText(data, $"\nGalaxy Metalicity Predicted : {this.Model_metals[SSPmodelnum]} [Z/H] \n");
-            File.AppendAllText(data, $"\nGalaxy Mass Predicted : {(1f / this.Mass_factor[SSPmodelnum]) * 1e-17f} Msolar \n");
+            File.AppendAllText(data, $"\nGalaxy Age Predicted : {Model_ages[SSPmodelnum]} Gyr \n");
+            File.AppendAllText(data, $"\nGalaxy Metalicity Predicted : {Model_metals[SSPmodelnum]} [Z/H] \n");
+            File.AppendAllText(data, $"\nGalaxy Mass Predicted : {(1f / Mass_factor[SSPmodelnum]) * 1e-17f} Msolar \n");
 
             File.AppendAllText(data, "\nModel Flux : \n");
-            File.AppendAllText(data, string.Join(" ", this.Model_flux.GetRowAsArray(SSPmodelnum)));
+            File.AppendAllText(data, string.Join(" ", Model_flux.GetRowAsArray(SSPmodelnum)));
 
 
 
@@ -1080,13 +1075,13 @@ namespace FALCON
             File.AppendAllText(data, "\n\nBest Dual-SSP Model Fit : \n");
             File.AppendAllText(data, $"\nModel no : {dualsspmodelnum[0]} & {dualsspmodelnum[1]} \n");
             File.AppendAllText(data, $"\nModel chi : {dualsspchi} \n");
-            File.AppendAllText(data, $"\nGalaxy Age Predicted : 50% - {this.Model_ages[dualsspmodelnum[0]]} / 50% - {this.Model_ages[dualsspmodelnum[1]]} Gyr \n");
-            File.AppendAllText(data, $"\nGalaxy Metalicity Predicted : {0.5f*(this.Model_metals[dualsspmodelnum[0]] + this.Model_metals[dualsspmodelnum[1]])} [Z/H] \n");
-            File.AppendAllText(data, $"\nGalaxy Mass Predicted : {0.5f * (((1f / this.Mass_factor[dualsspmodelnum[0]]) * 1e-17f) + ((1f / this.Mass_factor[dualsspmodelnum[1]]) * 1e-17f))} Msolar \n");
+            File.AppendAllText(data, $"\nGalaxy Age Predicted : 50% - {Model_ages[dualsspmodelnum[0]]} / 50% - {Model_ages[dualsspmodelnum[1]]} Gyr \n");
+            File.AppendAllText(data, $"\nGalaxy Metalicity Predicted : {0.5f * (Model_metals[dualsspmodelnum[0]] + Model_metals[dualsspmodelnum[1]])} [Z/H] \n");
+            File.AppendAllText(data, $"\nGalaxy Mass Predicted : {0.5f * (((1f / Mass_factor[dualsspmodelnum[0]]) * 1e-17f) + ((1f / Mass_factor[dualsspmodelnum[1]]) * 1e-17f))} Msolar \n");
 
             float[] midptflux = Midpoint(
-                this.Model_flux.Value[(dualsspmodelnum[0] * this.Model_wavelength.Length)..((dualsspmodelnum[0] + 1) * this.Model_wavelength.Length)],
-                this.Model_flux.Value[(dualsspmodelnum[1] * this.Model_wavelength.Length)..((dualsspmodelnum[1] + 1) * this.Model_wavelength.Length)]);
+                Model_flux.Value[(dualsspmodelnum[0] * Model_wavelength.Length)..((dualsspmodelnum[0] + 1) * Model_wavelength.Length)],
+                Model_flux.Value[(dualsspmodelnum[1] * Model_wavelength.Length)..((dualsspmodelnum[1] + 1) * Model_wavelength.Length)]);
 
             File.AppendAllText(data, "\nModel Flux : \n");
             File.AppendAllText(data, string.Join(" ", midptflux));
@@ -1110,18 +1105,18 @@ namespace FALCON
         // EXPERIMENTAL CODE DONT USE YET
         public float[] CalculateChiSquVec()
         {
-            int length_Data = this.Restframe_Wavelength.Value.Length;
-            int length_Mod = this.Model_wavelength.Length;
+            int length_Data = Restframe_Wavelength.Value.Length;
+            int length_Mod = Model_wavelength.Length;
             int models = length_Data / length_Mod;
 
-            float[] endVal = (from mwl in this.Model_wavelength.Value
-                              select Math.Abs(mwl - this.Restframe_Wavelength.Value[^1])).ToArray();
+            float[] endVal = (from mwl in Model_wavelength.Value
+                              select Math.Abs(mwl - Restframe_Wavelength.Value[^1])).ToArray();
 
             int endIdx = Array.IndexOf(endVal, endVal.Min()) + 1;
 
 
-            float[] startVal = (from mwl in this.Model_wavelength.Value[0..(endIdx + 1)]
-                                select Math.Abs(mwl - this.Restframe_Wavelength.Value[0])).ToArray();
+            float[] startVal = (from mwl in Model_wavelength.Value[0..(endIdx + 1)]
+                                select Math.Abs(mwl - Restframe_Wavelength.Value[0])).ToArray();
 
             int startIdx = Array.IndexOf(startVal, startVal.Min());
 
@@ -1130,7 +1125,7 @@ namespace FALCON
             List<float> new_mod_flux = new();
             for (int i = 0; i < models; i++)
             {
-                float[] vals = this.Model_flux.Value[(i * length_Mod + startIdx)..(i * length_Mod + endIdx)];
+                float[] vals = Model_flux.Value[(i * length_Mod + startIdx)..(i * length_Mod + endIdx)];
                 new_mod_flux.AddRange(vals);
             }
 
@@ -1143,14 +1138,14 @@ namespace FALCON
             Vector new_mod_flux_vec = new(gpu, new_mod_flux.ToArray());
             new_mod_flux_vec.IncrementLiveCount();
 
-            MemoryBuffer1D<float, Stride1D.Dense> 
+            MemoryBuffer1D<float, Stride1D.Dense>
                 buffer = output.GetBuffer(), // Output
                 buffer2 = new_mod_flux_vec.GetBuffer(), // Input
                 fluxBuf = Flux.GetBuffer(), // Input
                 errorBuf = Error.GetBuffer(); // Input
 
 
-            kernelWithStream(gpu.accelerator.DefaultStream, buffer.IntExtent, buffer.View, buffer2.View, fluxBuf.View, errorBuf.View , model_len);
+            kernelWithStream(gpu.accelerator.DefaultStream, buffer.IntExtent, buffer.View, buffer2.View, fluxBuf.View, errorBuf.View, model_len);
 
             gpu.accelerator.Synchronize();
 
@@ -1159,7 +1154,7 @@ namespace FALCON
             float[] chis = new float[models];
             for (int i = 0; i < models; i++)
             {
-                chis[i] = output.GetRowAsArray(i,true).Sum();
+                chis[i] = output.GetRowAsArray(i, true).Sum();
             }
 
             output.DecrementLiveCount();

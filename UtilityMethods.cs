@@ -43,7 +43,7 @@ namespace FALCON
             hdu = f.GetHDU(1);
             table = (nom.tam.util.ColumnTable)hdu.Data.DataArray;
 
-            Vector wavelength = new Vector(gpu, (float[])table.GetColumn(1)).OP_IP(10f, Operations.flipPow);
+            Vector wavelength = new Vector(gpu, (float[])table.GetColumn(1)).IPOP(10f, Operations.flipPow);
 
             Vector flux = new Vector(gpu, (float[])table.GetColumn(0));
 
@@ -138,11 +138,11 @@ namespace FALCON
             return scaledArray;
         }
 
-        public static int[] WhereIsClose(float[] array, float val, float rtol= 1e-05f, float atol=1e-8f)
+        public static int[] WhereIsClose(float[] array, float val, float rtol = 1e-05f, float atol = 1e-8f)
         {
             int[] matches = (from vals in array
-                              where Math.Abs(vals - val) <= (atol + rtol * MathF.Abs(val))
-                              select Array.IndexOf(array, vals)).ToArray();
+                             where Math.Abs(vals - val) <= (atol + rtol * MathF.Abs(val))
+                             select Array.IndexOf(array, vals)).ToArray();
             return matches;
         }
 
@@ -220,7 +220,7 @@ namespace FALCON
         }
     }
 
-    internal sealed class CubicSplineInterpolation 
+    internal sealed class CubicSplineInterpolation
     {
         private bool baseset = false;
         private int len;
@@ -372,7 +372,7 @@ namespace FALCON
 
         }
 
-        
+
 
     }
 
