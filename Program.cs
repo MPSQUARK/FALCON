@@ -41,7 +41,7 @@ for(int i= 0; i<2; i++)
     (Wavelength[i], Flux[i], Error[i], redshift[i], vdisp[i], ra[i], dec[i]) = UtilityMethods.ReadDataFits(gpu, files[i]);
 
     //Console.WriteLine($"Redshift : {redshift[i]} @ index : {i}");
-    Spectral_Model spectral_Model = new(files[i], Config.Milky_Way_Reddening, Config.HPF_Mode, Config.N_Masked_Amstrongs, gpu);
+    Spectral_Model spectral_Model = new(files[i], Config.Milky_Way_Reddening, Config.HPF_Mode, Config.N_Masked_Amstrongs);
     spectral_Model.InitialiseSpectraParameters(Wavelength[i], Flux[i], Error[i], redshift[i], [ra[i], dec[i]], vdisp[i], Config.Instrument_Resolution);
 
     spectral_Model.Fit_models_to_data();
