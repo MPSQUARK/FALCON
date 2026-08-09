@@ -1,0 +1,35 @@
+@page "/config"
+@rendermode InteractiveServer
+@using Falcon.Core.Configuration
+
+<PageTitle>Configuration</PageTitle>
+
+<h2>YAML Configuration</h2>
+<p>Path to config file:</p>
+<input @bind="ConfigPath" style="width: 100%; max-width: 600px" />
+<button @onclick="LoadConfig">Load</button>
+
+@if (Loaded)
+{
+    <pre>@Preview</pre>
+}
+
+@code {
+    string ConfigPath { get; set; } = "configs/example.yaml";
+    bool Loaded { get; set; }
+    string Preview { get; set; } = "";
+
+    void LoadConfig()
+    {
+        var path = Path.IsPathRooted(ConfigPath) ? ConfigPath : Path.Combine(AppContext.BaseDirectory, ConfigPath);
+        if (!File.Exists(path))
+        {
+            Preview = $"Not found: {path}";
+            Loaded = true;
+            return;
+        }
+        var opts = YamlConfigurationExtensions.LoadFireflyYaml(path);
+        Preview = $"Model: {opts.Model.Library}\nInput: {opts.Input.SpectrumPath}\nMax iterations: {opts.Fitting.MaxIterations}";
+        Loaded = true;
+    }
+}

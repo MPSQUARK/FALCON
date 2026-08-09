@@ -1,11 +1,13 @@
-﻿using ILGPU;
+using ILGPU;
 using ILGPU.Runtime;
 using ILGPU.Algorithms;
 using BAVCL;
 
-namespace FALCON;
+using Falcon.Core.Constants;
 
-public class Cosmology
+namespace Falcon.Core.Services.Cosmology;
+
+public class CosmologyService
 {
 
     float
@@ -57,7 +59,7 @@ public class Cosmology
         nuyp_Opti;
 
 
-    public Cosmology()
+    public CosmologyService()
     {
         Oc0 = 0.2589f;
         Ob0 = 0.04860f;
@@ -80,10 +82,10 @@ public class Cosmology
     {
         Odm0 = Om0 - Ob0;
         h = H0 * 0.01f;
-        hubble_distance = (Constants.c * 0.001f) / H0;
-        H0_s = H0 * Constants.H0units_to_invs;
-        hubble_time = (float)(Constants.sec_to_Gyr / H0_s);
-        critical_density0 = Constants.critdens_const * Math.Pow(H0_s, 2);
+        hubble_distance = (FireflyConstants.c * 0.001f) / H0;
+        H0_s = H0 * FireflyConstants.H0units_to_invs;
+        hubble_time = (float)(FireflyConstants.sec_to_Gyr / H0_s);
+        critical_density0 = FireflyConstants.critdens_const * Math.Pow(H0_s, 2);
         nneutrinos = (int)MathF.Floor(Neff);
 
         massivenu = false;
@@ -114,7 +116,7 @@ public class Cosmology
 
         if (Tcmb0 > 0)
         {
-            Ogamma0 = (Constants.a_B_c2 * Math.Pow(Tcmb0, 4d) / critical_density0);
+            Ogamma0 = (FireflyConstants.a_B_c2 * Math.Pow(Tcmb0, 4d) / critical_density0);
             Tnu0 = 0.7137658555036082f * Tcmb0;
 
             if (massivenu)
@@ -124,7 +126,7 @@ public class Cosmology
 
                 for (int i = 0; i < length; i++)
                 {
-                    nu_y[i] = (float)(massivenu_mass[i] / (Constants.kB_evK * Tnu0));
+                    nu_y[i] = (float)(massivenu_mass[i] / (FireflyConstants.kB_evK * Tnu0));
                 }
 
 

@@ -1,0 +1,43 @@
+@page "/run"
+@rendermode InteractiveServer
+@using BAVCL
+@using Falcon.Core.Abstractions
+@using Falcon.Core.Configuration
+@using Falcon.Core.DependencyInjection
+@inject ISpectralFitPipeline Pipeline
+@inject GPU Gpu
+
+<PageTitle>Run</PageTitle>
+
+<h2>Run Analysis</h2>
+<input @bind="ConfigPath" style="width:100%;max-width:600px" />
+<button @onclick="RunBatch" disabled="@Running">@(Running ? "Running..." : "Run batch")</button>
+<p>@Status</p>
+
+@code {
+    string ConfigPath { get; set; } = "configs/example.yaml";
+    string Status { get; set; } = "";
+    bool Running { get; set; }
+
+    async Task RunBatch()
+    {
+        Running = true;
+        Status = "Initialising...";
+        await Task.Yield();
+        try
+        {
+            var path = Path.IsPathRooted(ConfigPath) ? ConfigPath : Path.Combine(AppContext.BaseDirectory, ConfigPath);
+            var opts = YamlConfigurationExtensions.LoadFireflyYaml(path);
+            ServiceCollectionExtensions.InitializeGpuData(Gpu, opts, AppContext.BaseDirectory);
+            var inputDir = Path.Combine(AppContext.BaseDirectory, opts.Input.SpectrumPath);
+            var files = Directory.GetFiles(inputDir, opts.Input.InputGlob, SearchOption.AllDirectories);
+            Pipeline.FitBatch(files);
+            Status = $"Completed {files.Length} spectra.";
+        }
+        catch (Exception ex)
+        {
+            Status = ex.Message;
+        }
+        Running = false;
+    }
+}

@@ -338,9 +338,8 @@ ASALocalRun/
 
 # BeatPulse healthcheck temp database
 healthchecksdb
-/StellarPopulationModels/MaStar_SSP_v0.2.fits
-/Flux.txt
-/modeldata.h5
-/modelOutput.h5
-/StellarPopulationModels/MaStar_SSP.h5
-/DustMaps/dust.h5
+/output/
+Log.txt
+assets/**/*.h5
+assets/stellar-population-models/**
+assets/dust-maps/**

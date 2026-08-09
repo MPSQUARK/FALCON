@@ -1,12 +1,14 @@
-﻿using HDF5CSharp;
+using HDF5CSharp;
 using BAVCL;
+using Falcon.Core.Constants;
+using Falcon.Core.Services.Cosmology;
 
-namespace FALCON;
+namespace Falcon.Core.Configuration;
 
-public static class Config
+public static class LegacyConfig
 {
     public static string PathOfProgram = AppDomain.CurrentDomain.BaseDirectory;
-    public static Cosmology Cosmology = new();
+    public static CosmologyService Cosmology = new();
 
     // CONFIG OF HARDWARE   
     public static bool Has_Multi_GPU = false;
@@ -45,7 +47,7 @@ public static class Config
     // Choose IMF : DEFAULT 0 : Kroupa, 1 : Salpeter
     public static byte IMF { get; private set; } = 0;
     // Min and Max Age of Models
-    public static float[] MinMax_Model_Age { get; private set; } = [0, Constants.AoU];
+    public static float[] MinMax_Model_Age { get; private set; } = [0, FireflyConstants.AoU];
     // Min and Max Metalicity of Models
     public static float[] MinMax_Model_Metalicity { get; private set; } = [-3f, 3f];
     // Is the Data in Air or Vacuum - DEFAULT true : Air, false : Vacuum
@@ -66,21 +68,56 @@ public static class Config
 
     #endregion
 
-    // SETUP
-    public static void Setup(GPU gpu)
+    public static void ApplyFrom(FireflyOptions options, string basePath)
     {
-        GetModelData(gpu);
-        GetDustData();
+        PathOfProgram = basePath.EndsWith(Path.DirectorySeparatorChar) ? basePath : basePath + Path.DirectorySeparatorChar;
+        Model_Key = options.Model.ModelKey;
+        IMF = options.Model.Imf.Equals("Salpeter", StringComparison.OrdinalIgnoreCase) ? (byte)1 : (byte)0;
+        MinMax_Model_Age = [options.Model.AgeMin, options.Model.AgeMax];
+        MinMax_Model_Metalicity = [options.Model.MetallicityMin, options.Model.MetallicityMax];
+        Data_Medium = options.Input.DataMediumAir;
+        Flux_Scale_Factor = options.Input.FluxScaleFactor;
+        Write_Results = options.Input.WriteResults;
+        Milky_Way_Reddening = options.Dust.MilkyWayReddening;
+        HPF_Mode = options.Dust.HpfMode.Equals("on", StringComparison.OrdinalIgnoreCase);
+        Dust_Law = options.Dust.DustLaw.ToLowerInvariant() switch
+        {
+            "allen" => (byte)1,
+            "prevot" => (byte)2,
+            _ => (byte)0
+        };
+        Downgrade_models = options.Model.DowngradeModels;
+        N_Masked_Amstrongs = options.Masking.MaskedAngstroms;
+        Redshift = options.Input.Redshift;
+        RA_DEC = [options.Input.Ra, options.Input.Dec];
+        Velocity_Dispersion = options.Input.VelocityDispersion;
+        Instrument_Resolution = options.Input.InstrumentResolution;
+    }
+
+    // SETUP
+    public static void Setup(GPU gpu, FireflyOptions? options = null)
+    {
+        if (options is not null)
+        {
+            var models = Path.Combine(PathOfProgram, options.Paths.StellarPopulationModels.Replace('/', Path.DirectorySeparatorChar));
+            var dust = Path.Combine(PathOfProgram, options.Paths.DustMaps.Replace('/', Path.DirectorySeparatorChar));
+            Environment.SetEnvironmentVariable("FALCON_MODELS", models);
+            Environment.SetEnvironmentVariable("FALCON_DUST", dust);
+        }
+        GetModelData(gpu, options);
+        GetDustData(options);
         PreInitialiseDownGrade(gpu);
     }
 
-    // CONFIG PRE-INITIALISE DATA
-    private static void GetModelData(GPU gpu)
-    {
-        // run this function upon Config Application - Pre-Initialisation Phase
+    // SETUP (legacy)
+    public static void Setup(GPU gpu) => Setup(gpu, null);
 
-        // Read in Hdf5 Data File/s
-        string fileName = PathOfProgram + @"StellarPopulationModels/MaStar_SSP.h5";
+    // CONFIG PRE-INITIALISE DATA
+    private static void GetModelData(GPU gpu, FireflyOptions? options)
+    {
+        string modelsDir = Environment.GetEnvironmentVariable("FALCON_MODELS")
+            ?? Path.Combine(PathOfProgram, "assets", "stellar-population-models");
+        string fileName = Path.Combine(modelsDir, "MaStar_SSP.h5");
         long id = Hdf5.OpenFile(fileName, true);
 
         // Load Data For Ma-Star Models
@@ -89,13 +126,13 @@ public static class Config
             try
             {
                 // READ IN DATA
-                Constants.r_model = (double[])((Hdf5.ReadDatasetToArray<double>(id, "r_model")).Result);
+                FireflyConstants.r_model = (double[])((Hdf5.ReadDatasetToArray<double>(id, "r_model")).Result);
 
-                Constants.t = (float[])((Hdf5.ReadDatasetToArray<float>(id, "t")).Result);
-                Constants.Z = (float[])((Hdf5.ReadDatasetToArray<float>(id, "Z")).Result);
-                Constants.s = (float[])((Hdf5.ReadDatasetToArray<float>(id, "s")).Result);
+                FireflyConstants.t = (float[])((Hdf5.ReadDatasetToArray<float>(id, "t")).Result);
+                FireflyConstants.Z = (float[])((Hdf5.ReadDatasetToArray<float>(id, "Z")).Result);
+                FireflyConstants.s = (float[])((Hdf5.ReadDatasetToArray<float>(id, "s")).Result);
 
-                Constants.wavelength = new Vector(gpu, (float[])((Hdf5.ReadDatasetToArray<float>(id, "wavelength")).Result));
+                FireflyConstants.wavelength = new Vector(gpu, (float[])((Hdf5.ReadDatasetToArray<float>(id, "wavelength")).Result));
 
                 // READ IN FLUXGRID
                 float[,,,] fluxgrid;
@@ -116,11 +153,11 @@ public static class Config
 
 
                 // SET FLUXGRID 
-                Constants.fluxgrid = fluxgrid;
+                FireflyConstants.fluxgrid = fluxgrid;
 
 
                 // SET SLOPE AND SIDX
-                Constants.slope = IMF switch
+                FireflyConstants.slope = IMF switch
                 {
                     // kr
                     0 => 1.3f,
@@ -128,7 +165,7 @@ public static class Config
                     1 => 2.35f,
                     _ => throw new Exception("Unrecognised IMF"),
                 };
-                Constants.sidx = Array.IndexOf(Constants.s, Constants.slope);
+                FireflyConstants.sidx = Array.IndexOf(FireflyConstants.s, FireflyConstants.slope);
 
             }
             catch (Exception)
@@ -146,16 +183,16 @@ public static class Config
             switch (Model_Key)
             {
                 case 0b00001_001:
-                    Constants.r_model = [2.55d];
+                    FireflyConstants.r_model = [2.55d];
                     break;
                 case 0b00010_001:
-                    Constants.r_model = [3.40d];
+                    FireflyConstants.r_model = [3.40d];
                     break;
                 case 0b00100_001:
-                    Constants.r_model = [0.55d];
+                    FireflyConstants.r_model = [0.55d];
                     break;
                 case 0b01000_001:
-                    Constants.r_model = [0.10d];
+                    FireflyConstants.r_model = [0.10d];
                     break;
             }
 
@@ -169,40 +206,41 @@ public static class Config
     private static void PreInitialiseDownGrade(GPU gpu)
     {
 
-        if (Constants.r_model.Length == 1)
+        if (FireflyConstants.r_model.Length == 1)
         {
 
-            Constants.sres = new Vector(gpu, new float[Constants.wavelength.Length]);
+            FireflyConstants.sres = new Vector(gpu, new float[FireflyConstants.wavelength.Length]);
 
-            for (int i = 0; i < Constants.r_model.Length; i++)
+            for (int i = 0; i < FireflyConstants.r_model.Length; i++)
             {
-                Constants.sres[i] = (float)(Constants.wavelength[i] * (1f / Constants.r_model[0]));
+                FireflyConstants.sres[i] = (float)(FireflyConstants.wavelength[i] * (1f / FireflyConstants.r_model[0]));
             }
             return;
         }
 
-        Constants.sres = new(gpu, new float[Constants.r_model.Length]);
-        Constants.sres.SyncCPU();
-        for (int i = 0; i < Constants.r_model.Length; i++)
+        FireflyConstants.sres = new(gpu, new float[FireflyConstants.r_model.Length]);
+        FireflyConstants.sres.SyncCPU();
+        for (int i = 0; i < FireflyConstants.r_model.Length; i++)
         {
-            Constants.sres[i] = (float)Constants.r_model[i];
+            FireflyConstants.sres[i] = (float)FireflyConstants.r_model[i];
         }
 
-        Constants.sres.UpdateCache();
+        FireflyConstants.sres.UpdateCache();
 
         return;
 
     }
 
-    private static void GetDustData()
+    private static void GetDustData(FireflyOptions? options)
     {
-        // Read in Hdf5 Data File/s
-        string fileName = PathOfProgram + @"DustMaps/dust.h5";
+        string dustDir = Environment.GetEnvironmentVariable("FALCON_DUST")
+            ?? Path.Combine(PathOfProgram, "assets", "dust-maps");
+        string fileName = Path.Combine(dustDir, "dust.h5");
         long id = Hdf5.OpenFile(fileName, true);
 
         // Read Data
-        Constants.ngp_dust = (float[,])((Hdf5.ReadDatasetToArray<float>(id, "ngp")).Result);
-        Constants.sgp_dust = (float[,])((Hdf5.ReadDatasetToArray<float>(id, "sgp")).Result);
+        FireflyConstants.ngp_dust = (float[,])((Hdf5.ReadDatasetToArray<float>(id, "ngp")).Result);
+        FireflyConstants.sgp_dust = (float[,])((Hdf5.ReadDatasetToArray<float>(id, "sgp")).Result);
         return;
     }
 

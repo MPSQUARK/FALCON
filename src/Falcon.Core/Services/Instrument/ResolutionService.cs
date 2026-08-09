@@ -1,14 +1,16 @@
-﻿using BAVCL;
+using BAVCL;
 using ILGPU;
 using ILGPU.Algorithms;
 using ILGPU.Runtime;
+using Falcon.Core.Constants;
+using Falcon.Core.Services.IO;
 
-namespace FALCON;
+namespace Falcon.Core.Services.Instrument;
 
-class Spectral_resolution
+public class ResolutionService
 {
     // Constructor
-    public Spectral_resolution(GPU gpu, Vector wave_in, Vector sres_in, bool log10_in = false) //, string interp_ext_in = "extrapolate"
+    public ResolutionService(GPU gpu, Vector wave_in, Vector sres_in, bool log10_in = false) //, string interp_ext_in = "extrapolate"
     {
 
         this.gpu = gpu;
@@ -56,7 +58,7 @@ class Spectral_resolution
     // Methods
     private float Spectrum_velocity_scale(Vector wave)
     {
-        return Constants.c_kms * Spectral_coordinate_step(wave, log: true, _base: MathF.E);
+        return FireflyConstants.c_kms * Spectral_coordinate_step(wave, log: true, _base: MathF.E);
     }
 
     private float Spectral_coordinate_step(Vector wave, bool log = false, float _base = 10f)
@@ -67,27 +69,27 @@ class Spectral_resolution
             Vector wave_1 = new(gpu, wave.Value[1..]);
             Vector wave_2 = new(gpu, wave.Value[..^1]);
 
-            return (wave_1.Log_IP(_base) - wave_2.Log_IP(_base)).Mean();
+            return (wave_1.LogXIP(_base) - wave_2.LogXIP(_base)).Mean();
         }
 
         if (log)
         {
-            return Vector.Diff(wave).Log_IP(_base).IPOP(XMath.Rcp(XMath.Log(_base)), Operations.multiply).Mean();
+            return Vector.DiffX(wave).LogXIP(_base).IPOP(XMath.Rcp(XMath.Log(_base)), Operations.multiply).Mean();
         }
 
 
         // If log is false
-        return Vector.Diff(wave).Mean();
+        return Vector.DiffX(wave).Mean();
     }
 
 
 
-    public void match(Spectral_resolution new_sres, bool no_offset = true, float min_sig_pix = 0f)
+    public void match(ResolutionService new_sres, bool no_offset = true, float min_sig_pix = 0f)
     {
         GaussianKernelDifference(new_sres, no_offset, min_sig_pix);
     }
 
-    private void GaussianKernelDifference(Spectral_resolution new_sres, bool no_offset = true, float min_sig_pix = 0f)
+    private void GaussianKernelDifference(ResolutionService new_sres, bool no_offset = true, float min_sig_pix = 0f)
     {
         min_sig = min_sig_pix;
 
@@ -109,13 +111,13 @@ class Spectral_resolution
         //float[] sig2_wd = new float[_wave.Length];
         //for (int i = 0; i < sig2_wd.Length; i++)
         //{
-        //    sig2_wd[i] = MathF.Pow(_wave[i] / Constants.sig2FWHM, 2f) * (1.0f / MathF.Pow(interp_sres[i], 2f) - 1.0f / MathF.Pow(_sres[i], 2f));
+        //    sig2_wd[i] = MathF.Pow(_wave[i] / FireflyConstants.sig2FWHM, 2f) * (1.0f / MathF.Pow(interp_sres[i], 2f) - 1.0f / MathF.Pow(_sres[i], 2f));
         //}
 
         //float[] sig2_vd = new float[sig2_wd.Length];
         //for (int i = 0; i < sig2_vd.Length; i++)
         //{
-        //    sig2_vd[i] = MathF.Pow(Constants.c_kms / _wave[i],2f) * sig2_wd[i];
+        //    sig2_vd[i] = MathF.Pow(FireflyConstants.c_kms / _wave[i],2f) * sig2_wd[i];
         //}
 
         Vector sig2_vd = DetermineVariance(_wave, interp_sres, _sres);
@@ -143,7 +145,7 @@ class Spectral_resolution
         float[] dv = new float[_wave.Length - 1];
         for (int i = 0; i < dv.Length; i++)
         {
-            dv[i] = Constants.c_kms * (2 * (_wave[i + 1] - _wave[i]) / (_wave[i + 1] + _wave[i]));
+            dv[i] = FireflyConstants.c_kms * (2 * (_wave[i + 1] - _wave[i]) / (_wave[i + 1] + _wave[i]));
         }
 
         sig_vo = neg_amin_sig2_vd - MathF.Pow((min_sig * dv.Max()), 2f);
@@ -179,7 +181,7 @@ class Spectral_resolution
             interpsresBuffer = interp_sres.GetBuffer(), //  Input
             sresbuffer = sres.GetBuffer();              //  Input
 
-        kernelWithStream(gpu.accelerator.DefaultStream, outBuffer.IntExtent, outBuffer.View, waveBuffer.View, interpsresBuffer.View, sresbuffer.View, Constants.sig2FWHM, Constants.c_kms);
+        kernelWithStream(gpu.accelerator.DefaultStream, outBuffer.IntExtent, outBuffer.View, waveBuffer.View, interpsresBuffer.View, sresbuffer.View, FireflyConstants.sig2FWHM, FireflyConstants.c_kms);
 
         gpu.accelerator.Synchronize();
 
@@ -204,15 +206,15 @@ class Spectral_resolution
             return sig2_vd * MathF.Pow(dv, -2f);
         }
 
-        float inv_cdw_squ = XMath.Rcp(Constants.c_kms * Constants.c_kms * dw * dw);
+        float inv_cdw_squ = XMath.Rcp(FireflyConstants.c_kms * FireflyConstants.c_kms * dw * dw);
 
         return (wave * wave).IPOP(sig2_vd, Operations.multiply).IPOP(inv_cdw_squ, Operations.multiply);
     }
 
     private void finalize_GaussianKernelDifference(Vector sig2_pd)
     {
-        int[] indx = UtilityMethods.WhereIsClose(sig2_pd.Pull(), 0f);
-        int[] nindx = UtilityMethods.WhereNot(indx, sig2_pd.Length);
+        int[] indx = FitsSpectrumReader.WhereIsClose(sig2_pd.Pull(), 0f);
+        int[] nindx = FitsSpectrumReader.WhereNot(indx, sig2_pd.Length);
 
         sig_pd = sig2_pd;
         sig_pd.SyncCPU();
@@ -236,7 +238,7 @@ class Spectral_resolution
 
     public float[] adjusted_resolution(int[] indxs)
     {
-        float sig2fwhm_by_c_sq = MathF.Pow(Constants.sig2FWHM / Constants.c_kms, 2f);
+        float sig2fwhm_by_c_sq = MathF.Pow(FireflyConstants.sig2FWHM / FireflyConstants.c_kms, 2f);
         float[] output;
         Vector pd2vd;
         if (indxs.Length == 0)
@@ -282,7 +284,7 @@ class Spectral_resolution
             return sig2_pd * (dv * dv);
         }
 
-        Vector output = sig2_pd * (Constants.c_kms * Constants.c_kms * dw * dw);
+        Vector output = sig2_pd * (FireflyConstants.c_kms * FireflyConstants.c_kms * dw * dw);
         output.SyncCPU();
         for (int i = 0; i < output.Length; i++)
         {

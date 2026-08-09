@@ -1,32 +1,42 @@
-﻿using ILGPU;
+using Falcon.Core.Abstractions;
+using Falcon.Core.Configuration;
+using Falcon.Core.Constants;
+using Falcon.Core.Services.Cosmology;
+using Falcon.Core.Services.IO;
+using Falcon.Core.Services.Fitting;
+using Falcon.Core.Services.Instrument;
+using Falcon.Core.Services.Statistics;
+using ILGPU;
 using ILGPU.Algorithms;
 using ILGPU.Runtime;
 using BAVCL;
 using System.Runtime.CompilerServices;
-using BAVCL.Services;
 
-namespace FALCON;
+namespace Falcon.Core.Pipeline;
 
-class Spectral_Model
+public class SpectralFitPipeline
 {
-    public Spectral_Model(string path,
-                   bool milky_Way_Reddening = true, // SHOULD BE TRUE
+    public SpectralFitPipeline(string path,
+                   bool milky_Way_Reddening = true,
                    bool hPF_Mode = true,
-                   ushort n_Masked_Amstrongs = 20)
+                   ushort n_Masked_Amstrongs = 20,
+                   IDustService? dustService = null)
     {
-        Path = path;
+        DataFilePath = path;
         Milky_Way_Reddening = milky_Way_Reddening;
         HPF_Mode = hPF_Mode;
         N_Masked_Amstrongs = n_Masked_Amstrongs;
+        _dustService = dustService ?? new Services.Dust.DustService();
         gpu = GPUManager.Default;
     }
 
     readonly GPU gpu;
+    readonly IDustService _dustService;
 
     // SPECTRA SPECIFIC VARIABLES
     #region
     // constructor variables
-    public string Path { get; private set; }
+    public string DataFilePath { get; private set; }
     public bool Milky_Way_Reddening { get; private set; }
     public bool HPF_Mode { get; private set; }
     public ushort N_Masked_Amstrongs { get; private set; }
@@ -59,6 +69,7 @@ class Spectral_Model
     // Bad Data ?? 
     // mask emission lines
     public float Ebv_MW { get; private set; }
+    public float Ebv_Fit { get; private set; }
     public bool DataLiesOutsideModel = false;
     #endregion
 
@@ -94,9 +105,9 @@ class Spectral_Model
     public void InitialiseSpectraParameters(BAVCL.Vector Data, float Redshift, float[] RA_DEC, float Velocity_Disp, float instrument_resolution) // also include emission lines masking
     {
 
-        Wavelength = Data.GetColumnAsVector(0);
-        Flux = Data.GetColumnAsVector(1);
-        Error = Data.GetColumnAsVector(2);
+        Wavelength = Data.GetColumnAsVectorX(0);
+        Flux = Data.GetColumnAsVectorX(1);
+        Error = Data.GetColumnAsVectorX(2);
 
         this.Redshift = Redshift;
         this.RA_DEC = RA_DEC;
@@ -132,7 +143,7 @@ class Spectral_Model
         }
 
         // CALCULATE LUMINOSITY DISTANCE in CM and convert to Mpc
-        Distance_Luminosity = UtilityMethods.Mpc2cm(Config.Cosmology.GPU_Integration(gpu, this.Redshift, 1e-8f));
+        Distance_Luminosity = FitsSpectrumReader.Mpc2cm(LegacyConfig.Cosmology.GPU_Integration(gpu, this.Redshift, 1e-8f));
 
 
         // Initialise Model Section
@@ -218,7 +229,7 @@ class Spectral_Model
         Instrument_Resolution = Vector.Fill(gpu, instrument_resolution, this.Wavelength.Length);
 
         // CALCULATE LUMINOSITY DISTANCE in CM and convert to Mpc
-        Distance_Luminosity = UtilityMethods.Mpc2cm(Config.Cosmology.GPU_Integration(gpu, this.Redshift, 1e-8f));
+        Distance_Luminosity = FitsSpectrumReader.Mpc2cm(LegacyConfig.Cosmology.GPU_Integration(gpu, this.Redshift, 1e-8f));
 
 
         // Initialise Model Section
@@ -275,8 +286,8 @@ class Spectral_Model
     {
 
         float[] l_b = Eq2Gal(
-            UtilityMethods.Degree2Radians(RADEC[0]),
-            UtilityMethods.Degree2Radians(RADEC[1])
+            FitsSpectrumReader.Degree2Radians(RADEC[0]),
+            FitsSpectrumReader.Degree2Radians(RADEC[1])
             );
 
         return Get_SFD_dust(l_b[0], l_b[1]);
@@ -286,28 +297,28 @@ class Spectral_Model
     private float[] Eq2Gal(float ra, float dec)
     {
 
-        float Cos_dec_Mult_Cos_GNEV0 = (float)(Math.Cos(dec) * Math.Cos(ra - Constants.Galactic_Northpole_Equatorial[0]));
+        float Cos_dec_Mult_Cos_GNEV0 = (float)(Math.Cos(dec) * Math.Cos(ra - FireflyConstants.Galactic_Northpole_Equatorial[0]));
 
         float b = (float)Math.Asin(
-            Math.Sin(dec) * Math.Sin(Constants.Galactic_Northpole_Equatorial[1]) +
-            Math.Cos(Constants.Galactic_Northpole_Equatorial[1]) * Cos_dec_Mult_Cos_GNEV0
+            Math.Sin(dec) * Math.Sin(FireflyConstants.Galactic_Northpole_Equatorial[1]) +
+            Math.Cos(FireflyConstants.Galactic_Northpole_Equatorial[1]) * Cos_dec_Mult_Cos_GNEV0
             );
 
         float l = (float)Math.Atan2(
-            Math.Sin(dec) * Math.Cos(Constants.Galactic_Northpole_Equatorial[1]) -
-            Math.Sin(Constants.Galactic_Northpole_Equatorial[1]) * Cos_dec_Mult_Cos_GNEV0,
-            Math.Cos(dec) * Math.Sin(ra - Constants.Galactic_Northpole_Equatorial[0])
-            ) + UtilityMethods.Degree2Radians(33f);
+            Math.Sin(dec) * Math.Cos(FireflyConstants.Galactic_Northpole_Equatorial[1]) -
+            Math.Sin(FireflyConstants.Galactic_Northpole_Equatorial[1]) * Cos_dec_Mult_Cos_GNEV0,
+            Math.Cos(dec) * Math.Sin(ra - FireflyConstants.Galactic_Northpole_Equatorial[0])
+            ) + FitsSpectrumReader.Degree2Radians(33f);
 
         if (l < 0)
         {
-            l += Constants.TwoPi;
+            l += FireflyConstants.TwoPi;
         }
 
-        l %= Constants.TwoPi;
+        l %= FireflyConstants.TwoPi;
 
 
-        return new float[2] { l * Constants.Rad2DegFactor, b * Constants.Rad2DegFactor };
+        return new float[2] { l * FireflyConstants.Rad2DegFactor, b * FireflyConstants.Rad2DegFactor };
     }
 
     private float Get_SFD_dust(float logitude, float latitude, string dustmap = "ebv", bool interpolate = true)
@@ -392,7 +403,7 @@ class Spectral_Model
 
 
 
-        return 0f;
+        return (float)_dustService.GetSfdEbv(logitude, latitude, FireflyConstants.ngp_dust, FireflyConstants.sgp_dust);
     }
 
     #endregion
@@ -419,23 +430,11 @@ class Spectral_Model
         //Match_data_models(); 
         NormaliseSpec();
 
-        // Part 3 - correction from dust attenuation
-        // -- LOG TIME COMPARISON -- CHECKPOINT
-        if (Config.HPF_Mode)
+        if (LegacyConfig.HPF_Mode && Model_flux is not null && Model_ages is not null)
         {
-
-        }
-        else // hpf only if False
-        {
-
+            RunDustAttenuationPipeline();
         }
 
-
-        // Part 5
-        // Gets the best model
-
-
-        // TEST CODE
         GenerateInterpSSP();
 
 
@@ -446,7 +445,7 @@ class Spectral_Model
     {
 
         // M11 Models
-        if (Config.Model_Key % 2 == 1)
+        if (LegacyConfig.Model_Key % 2 == 1)
         {
             //var first_file = true;
             // List of model_files = []
@@ -464,41 +463,41 @@ class Spectral_Model
         }
 
         // MaStar Models
-        if (Config.Model_Key % 2 == 0)
+        if (LegacyConfig.Model_Key % 2 == 0)
         {
             // Gets Wavelengths from Model Data
-            Model_wavelength = Constants.wavelength;  // Lacking 1dp precision
+            Model_wavelength = FireflyConstants.wavelength;  // Lacking 1dp precision
             // Gets Indexes of Models matching wavlengths
             TrimModel();
 
-            (int[] indx, Spectral_resolution res, VariableGaussianKernel vGK) = DownGradeModelInvar(Model_wavelength, Velocity_dispersion_r, Constants.sres, Instrument_Resolution);
+            (int[] indx, ResolutionService res, VariableGaussianKernel vGK) = DownGradeModelInvar(Model_wavelength, Velocity_dispersion_r, FireflyConstants.sres, Instrument_Resolution);
 
             List<float> model_flux = new();
             List<float> age_model = new();
             List<float> metal_model = new();
 
 
-            Vector flux = new(gpu, new float[Constants.wavelength.Length], 1, false);
+            Vector flux = new(gpu, new float[FireflyConstants.wavelength.Length], 1, false);
 
 
             // MAX AGE needs fixing to use data from the fits input
 
-            for (int i = 0; i < Constants.t.Length; i++)
+            for (int i = 0; i < FireflyConstants.t.Length; i++)
             {
                 //index i in t , t value
-                if ((Constants.t[i] < Config.MinMax_Model_Age[0]) || (Constants.t[i] > Config.MinMax_Model_Age[1]))
+                if ((FireflyConstants.t[i] < LegacyConfig.MinMax_Model_Age[0]) || (FireflyConstants.t[i] > LegacyConfig.MinMax_Model_Age[1]))
                 {
                     continue;
                 }
 
-                for (int j = 0; j < Constants.Z.Length; j++)
+                for (int j = 0; j < FireflyConstants.Z.Length; j++)
                 {
                     // index, Z value
-                    if (Constants.Z[j] < Config.MinMax_Model_Metalicity[0] || Constants.Z[j] > Config.MinMax_Model_Metalicity[1])
+                    if (FireflyConstants.Z[j] < LegacyConfig.MinMax_Model_Metalicity[0] || FireflyConstants.Z[j] > LegacyConfig.MinMax_Model_Metalicity[1])
                     {
                         continue;
                     }
-                    if (Constants.Z[j] < -1.35f && Constants.t[i] < 1)
+                    if (FireflyConstants.Z[j] < -1.35f && FireflyConstants.t[i] < 1)
                     {
                         continue;
                     }
@@ -506,14 +505,14 @@ class Spectral_Model
                     // TRIM DOWN THE WAVELENGTH AND THE FLUX to correspond to Data
                     for (int k = 0; k < flux.Length; k++)
                     {
-                        flux.Value[k] = Constants.fluxgrid[i, j, Constants.sidx, k];
+                        flux.Value[k] = FireflyConstants.fluxgrid[i, j, FireflyConstants.sidx, k];
                     }
                     flux.UpdateCache();
 
                     // no conversion to vacuum needed, assuming models are in vacuum
 
                     // downgrades the model
-                    if (Config.Downgrade_models)
+                    if (LegacyConfig.Downgrade_models)
                     {
                         flux = DownGrade(gpu, flux, indx, res, vGK);
                     }
@@ -522,7 +521,7 @@ class Spectral_Model
                     // Reddens the models
                     if (Ebv_MW != 0)
                     {
-                        Vector attenuations = unred(Constants.wavelength, -Ebv_MW); // ebv = 0f - ebv_mw
+                        Vector attenuations = unred(FireflyConstants.wavelength, -Ebv_MW); // ebv = 0f - ebv_mw
 
                         try
                         {
@@ -540,13 +539,13 @@ class Spectral_Model
                         model_flux.AddRange(flux.Pull());
                     }
 
-                    age_model.Add(Constants.t[i]);
-                    metal_model.Add(Constants.Z[j]); // In FireFly 10^{Z[j]} is used to get Metalicity in units of Solar Metalicity
+                    age_model.Add(FireflyConstants.t[i]);
+                    metal_model.Add(FireflyConstants.Z[j]); // In FireFly 10^{Z[j]} is used to get Metalicity in units of Solar Metalicity
 
                 }
             }
 
-            Model_flux = new Vector(gpu, model_flux.ToArray(), Constants.wavelength.Length); // 2D flattened Array
+            Model_flux = new Vector(gpu, model_flux.ToArray(), FireflyConstants.wavelength.Length); // 2D flattened Array
             Model_ages = age_model.ToArray();
             Model_metals = metal_model.ToArray();
 
@@ -558,20 +557,19 @@ class Spectral_Model
 
     private void TrimModel()
     {
-
-        int length_Data = Restframe_Wavelength.Length;
-        int length_Mod = Model_wavelength.Length;
-        int[] indxs;
-
         Model_wavelength.SyncCPU();
         Restframe_Wavelength.SyncCPU();
+
+        int length_Data = Restframe_Wavelength.Length; // Data
+        int length_Mod = Model_wavelength.Length; // Model
+        int[] indxs;
 
         // If data lies within the model
         if (Model_wavelength[0] < Restframe_Wavelength[0] && Model_wavelength.Value[^1] > Restframe_Wavelength.Value[^1])
         {
 
             float[] endVal = (from mwl in Model_wavelength.Value
-                                select Math.Abs(mwl - Restframe_Wavelength.Value[^1])).ToArray();
+                              select Math.Abs(mwl - Restframe_Wavelength.Value[^1])).ToArray();
 
             int endIdx = Array.IndexOf(endVal, endVal.Min()) + 1;
 
@@ -580,7 +578,6 @@ class Spectral_Model
                                 select Math.Abs(mwl - Restframe_Wavelength.Value[0])).ToArray();
 
             int startIdx = Array.IndexOf(startVal, startVal.Min());
-
 
             if (endIdx - startIdx == length_Data)
             {
@@ -610,7 +607,7 @@ class Spectral_Model
         // If the data lies outside the model
         DataLiesOutsideModel = true;
 
-        indxs = new int[length_Data];
+        indxs = new int[length_Mod];
         for (int i = 0; i < Restframe_Wavelength.Length; i++)
         {
             float[] matchtest = (from mwl in Model_wavelength.Value
@@ -619,12 +616,10 @@ class Spectral_Model
         }
         MatchingWavelengthMapping = indxs;
 
-        //Console.WriteLine("WARNING TRIMMODEL FUNC REACHED UNFINISHED CODE");
-
         return;
     }
 
-    private (int[], Spectral_resolution, VariableGaussianKernel) DownGradeModelInvar(Vector mod_wavelength, int vdisp_round, Vector sres, Vector r_instrument, float min_sig_pix = 0f, bool no_offset = true)
+    private (int[], ResolutionService, VariableGaussianKernel) DownGradeModelInvar(Vector mod_wavelength, int vdisp_round, Vector sres, Vector r_instrument, float min_sig_pix = 0f, bool no_offset = true)
     {
         Vector new_sig = new(gpu, new float[mod_wavelength.Length], 1, false);
         r_instrument.SyncCPU();
@@ -636,13 +631,13 @@ class Spectral_Model
                 j++;
             }
 
-            float sig_instrument = Constants.c_kms / (r_instrument[j] * Constants.sig2FWHM);
+            float sig_instrument = FireflyConstants.c_kms / (r_instrument[j] * FireflyConstants.sig2FWHM);
             new_sig.Value[i] = MathF.Sqrt(MathF.Pow(vdisp_round, 2f) + MathF.Pow(sig_instrument, 2f));
 
         }
         new_sig.UpdateCache();
 
-        Vector new_sres = Constants.c_div_sig2 / new_sig;
+        Vector new_sres = FireflyConstants.c_div_sig2 / new_sig;
 
         // IF mod_wavelength < 5 -> raise an error ?? Unlikely
 
@@ -653,7 +648,7 @@ class Spectral_Model
         }
 
 
-        // match_spectral_resolution Begins
+        // match_ResolutionService Begins
 
         Vector wave = mod_wavelength;
         Vector new_sres_wave = mod_wavelength;
@@ -663,8 +658,8 @@ class Spectral_Model
             Console.WriteLine("WARNING : Mapping to the new spectral resolution will require extrapolating the provided input vectors!");
         }
 
-        Spectral_resolution new_res = new(gpu, new_sres_wave, new_sres, log_wave);
-        Spectral_resolution res = new(gpu, wave, sres, log_wave);
+        ResolutionService new_res = new(gpu, new_sres_wave, new_sres, log_wave);
+        ResolutionService res = new(gpu, wave, sres, log_wave);
 
         res.match(new_res, no_offset, min_sig_pix);
 
@@ -716,27 +711,27 @@ class Spectral_Model
         return (indx, res, vGK);
     }
 
-    private Vector DownGrade(GPU gpu, Vector flux, int[] indx, Spectral_resolution res, VariableGaussianKernel vGK)
+    private Vector DownGrade(GPU gpu, Vector flux, int[] indx, ResolutionService res, VariableGaussianKernel vGK)
     {
 
-        Match_spectral_resolution(gpu, flux, indx, res, vGK);
+        Match_ResolutionService(gpu, flux, indx, res, vGK);
 
-        // Call match_spectral_resolution(mod_wavelength, flux, sres, mod_wavelength, new_sres, min_sig_pix=0.0,
+        // Call match_ResolutionService(mod_wavelength, flux, sres, mod_wavelength, new_sres, min_sig_pix=0.0,
         // log10=log_wave, new_log10=log_wave)
         // get : new_flux, matched_sres, sigma_offset, new_mask
 
         return flux;
     }
 
-    private void Match_spectral_resolution(GPU gpu, Vector flux, int[] indx, Spectral_resolution res, VariableGaussianKernel vGK)
+    private void Match_ResolutionService(GPU gpu, Vector flux, int[] indx, ResolutionService res, VariableGaussianKernel vGK)
     {
         //var dims = 1;
 
         // 0.2s
-        //Spectral_resolution new_res = new Spectral_resolution(gpu, new_sres_wave, new_sres.Value, log10 = new_log10);
+        //ResolutionService new_res = new ResolutionService(gpu, new_sres_wave, new_sres.Value, log10 = new_log10);
 
         // 0.2s
-        //Spectral_resolution res = new Spectral_resolution(gpu, wave, sres, log10);
+        //ResolutionService res = new ResolutionService(gpu, wave, sres, log10);
         // 18-20s
         //res.match(new_res, no_offset, min_sig_pix);
         //float sigma_offset = res.sig_vo;
@@ -821,7 +816,7 @@ class Spectral_Model
 
     private void NormaliseSpec()
     {
-        float data_norm = UtilityMethods.Median(Flux.Pull());
+        float data_norm = FitsSpectrumReader.Median(Flux.Pull());
         int num_mods = Model_flux.Length / Model_flux.Columns;     // 198
 
         Vector model_norm = new(gpu, new float[num_mods], 1, false);
@@ -830,7 +825,7 @@ class Spectral_Model
         Model_flux.SyncCPU();
         for (int i = 0; i < num_mods; i++)
         {
-            model_norm[i] = UtilityMethods.Median(Model_flux.GetRowAsArray(i, true));
+            model_norm[i] = FitsSpectrumReader.Median(Model_flux.GetRowAsArray(i, true));
             mass_factor[i] = data_norm / model_norm[i];
         }
 
@@ -876,11 +871,45 @@ class Spectral_Model
 
     private Vector unred(Vector wavelength, float ebv_mw)
     {
+        wavelength.SyncCPU();
+        var wave = wavelength.Pull();
+        var atten = _dustService.Unred(wave.Select(w => (double)w).ToArray(), ebv_mw, LegacyConfig.Dust_Law switch
+        {
+            1 => "allen",
+            2 => "prevot",
+            _ => "calzetti"
+        });
+        return new Vector(gpu, atten.Select(a => (float)a).ToArray());
+    }
 
+    private void RunDustAttenuationPipeline()
+    {
+        int nModels = Model_ages.Length;
+        int nWave = Flux.Length;
+        var wave = Restframe_Wavelength.Pull().Select(w => (double)w).ToArray();
+        var data = Flux.Pull().Select(v => (double)v).ToArray();
+        var err = Error.Pull().Select(v => (double)v).ToArray();
+        var modelFlux = new double[nModels][];
+        for (int m = 0; m < nModels; m++)
+            modelFlux[m] = Model_flux.GetRowAsArray(m, true).Select(v => (double)v).ToArray();
 
+        var dustInput = new DustAttenuationInput
+        {
+            Wavelength = wave,
+            DataFlux = data,
+            ErrorFlux = err,
+            ModelFlux = modelFlux,
+            Age = Model_ages.Select(a => (double)a).ToArray(),
+            Metal = Model_metals.Select(z => (double)z).ToArray(),
+            MaxEbv = 1f,
+            NumDustVals = 200,
+            SmoothingLength = 100f,
+            DustLaw = LegacyConfig.Dust_Law switch { 1 => "allen", 2 => "prevot", _ => "calzetti" }
+        };
 
-
-        return wavelength;
+        var fitter = new IterativeSpectralFitter();
+        var result = _dustService.DetermineAttenuation(dustInput, fitter);
+        Ebv_Fit = (float)result.Ebv;
     }
 
 
@@ -898,7 +927,7 @@ class Spectral_Model
         // Finds the closest start value
         //float Closest_Start_Val = this.Model_wavelength.OrderBy(n => Math.Abs(this.Restframe_Wavelength.Value[0] - n)).First();
 
-        float Closest_Start_Val = (Restframe_Wavelength[0] - Model_wavelength).AbsX_IP().Min();
+        float Closest_Start_Val = (Restframe_Wavelength[0] - Model_wavelength).AbsXIP().Min();
 
 
         // Gets Index of Closest Value
@@ -923,6 +952,7 @@ class Spectral_Model
     // will combine together SSP 50:50, 30:30:30, 25:25:25:25, 20:20:20:20:20
     private void GenerateInterpSSP()
     {
+        Flux.SyncCPU();
         int totlen = Model_flux.Length;
         int lenOneModel = Model_flux.Columns;
         int noModels = totlen / lenOneModel;
@@ -933,7 +963,7 @@ class Spectral_Model
 
         Vector trimmedflux = new(gpu, new float[MatchingWavelengthMapping.Length * noModels], MatchingWavelengthMapping.Length);
         trimmedflux.IncrementLiveCount();
-
+        Model_flux.IncrementLiveCount();
 
         MemoryBuffer1D<float, Stride1D.Dense>
             buffer = trimmedflux.GetBuffer(),         // Output
@@ -944,6 +974,7 @@ class Spectral_Model
 
         gpu.accelerator.Synchronize();
 
+        Model_flux.DecrementLiveCount();
         buffer3.Dispose();
 
         // RUN 1
@@ -958,7 +989,7 @@ class Spectral_Model
             buffer_data_flux = Flux.GetBuffer(), //  Input
             buffer_data_err = Error.GetBuffer(); //  Input
 
-
+        // Buffer_data_flux and buffer_data_err are too short, should be 3818 but got 3700
         kernelWithStream2(gpu.accelerator.DefaultStream, noModels, buffer_chis.View, buffer_data_flux.View, buffer_data_err.View, buffer.View, Flux.Length);
 
         gpu.accelerator.Synchronize();
@@ -1041,7 +1072,11 @@ class Spectral_Model
     // record the data output
     private void RecordData(int SSPmodelnum, float SSPchi, int[] dualsspmodelnum, float dualsspchi)
     {
-        string data = Path.Replace("/Data", "/Output").Replace(".fits", "") + ".txt";
+        string outDirectory = Path.Join(LegacyConfig.PathOfProgram, "/Output");
+        if (!Directory.Exists(outDirectory))
+            Directory.CreateDirectory(outDirectory);
+
+        string data = DataFilePath.Replace("/Data", "/Output").Replace(".fits", "") + ".txt";
         File.WriteAllText(data, "");
 
         File.AppendAllText(data, "Restframe Wavelength of Data :\n");
@@ -1083,8 +1118,6 @@ class Spectral_Model
 
         File.AppendAllText(data, "\nModel Flux : \n");
         File.AppendAllText(data, string.Join(" ", midptflux));
-
-
 
     }
 

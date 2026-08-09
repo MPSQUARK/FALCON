@@ -1,0 +1,20 @@
+@page "/plots"
+@rendermode InteractiveServer
+
+<PageTitle>Plots</PageTitle>
+
+<h2>Result Plots</h2>
+<p>Run <code>python scripts/plot_results.py output/spec.txt --out wwwroot/plots/latest.png</code> then refresh.</p>
+
+@if (PlotExists)
+{
+    <img src="/plots/latest.png" alt="Latest plot" style="max-width:100%" />
+}
+else
+{
+    <p>No plot at wwwroot/plots/latest.png yet.</p>
+}
+
+@code {
+    bool PlotExists => File.Exists(Path.Combine(AppContext.BaseDirectory, "wwwroot", "plots", "latest.png"));
+}

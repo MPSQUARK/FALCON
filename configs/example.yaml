@@ -1,0 +1,47 @@
+input:
+  spectrum_path: assets/sample-data
+  input_glob: "*.fits"
+  redshift: 0.021275453
+  ra: 145.89219
+  dec: 0.059372
+  velocity_dispersion: 135.89957
+  instrument_resolution: 2000
+  flux_scale_factor: -17
+  data_medium_air: false
+  write_results: true
+
+model:
+  library: MaStar-E
+  imf: Kroupa
+  age_min: 0
+  age_max: 14700000000
+  metallicity_min: -3
+  metallicity_max: 3
+  downgrade_models: true
+  model_key: 18
+
+fitting:
+  max_iterations: 10
+  pdf_sampling: 200
+  max_ebv: 1.0
+  num_dust_vals: 200
+  dust_smoothing_length: 100
+
+dust:
+  milky_way_reddening: true
+  hpf_mode: on
+  dust_law: calzetti
+
+masking:
+  masked_angstroms: 20
+  emission_lines:
+    - 6562.80
+    - 6583.34
+    - 6547.96
+    - 4861.32
+
+paths:
+  stellar_population_models: assets/stellar-population-models
+  dust_maps: assets/dust-maps
+  output: output
+  mass_loss_tables: assets/mass-loss

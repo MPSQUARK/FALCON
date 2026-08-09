@@ -1,11 +1,13 @@
-﻿using BAVCL;
+using BAVCL;
 using nom.tam.fits;
 using nom.tam.util;
 
 
-namespace FALCON;
+using Falcon.Core.Constants;
 
-public class UtilityMethods
+namespace Falcon.Core.Services.IO;
+
+public static class FitsSpectrumReader
 {
 
     public static float[] ReadData(string Path)
@@ -42,7 +44,7 @@ public class UtilityMethods
 
         Vector flux = new(gpu, (float[])table.GetColumn(0));
 
-        Vector error = new Vector(gpu, (float[])table.GetColumn(2)).RsqrtX_IP();
+        Vector error = new Vector(gpu, (float[])table.GetColumn(2)).RsqrtXIP();
 
 
         //Vector wavelength = Vector.TenToPowerVector(gpu, (float[])table.GetColumn(1));
@@ -61,7 +63,7 @@ public class UtilityMethods
 
     public static float Degree2Radians(float Deg)
     {
-        return Deg * Constants.Deg2RadFactor;
+        return Deg * FireflyConstants.Deg2RadFactor;
     }
 
     public static float Mpc2cm(float Mpc)
@@ -148,7 +150,7 @@ public class UtilityMethods
 
 }
 
-public sealed class Tridiagonal
+internal sealed class Tridiagonal
 {
     public static float[] Solve(float[,] matrix, float[] d)
     {
@@ -240,10 +242,10 @@ internal sealed class CubicSplineInterpolation
             float? result = 0;
             int N = len - 1;
 
-            float[] h = UtilityMethods.Diff(X);
-            float[] D = UtilityMethods.Scale(UtilityMethods.Diff(Y), h, false);
+            float[] h = FitsSpectrumReader.Diff(X);
+            float[] D = FitsSpectrumReader.Scale(FitsSpectrumReader.Diff(Y), h, false);
             float[] s = Enumerable.Repeat(3f, D.Length).ToArray();
-            float[] dD3 = UtilityMethods.Scale(UtilityMethods.Diff(D), s);
+            float[] dD3 = FitsSpectrumReader.Scale(FitsSpectrumReader.Diff(D), s);
             float[] a = Y;
 
             // generate tridiagonal system
@@ -364,7 +366,7 @@ internal sealed class CubicSplineInterpolation
 
 }
 
-internal sealed class LinearInterpolation
+public sealed class LinearInterpolation
 {
     private bool baseset = false;
     private int len;

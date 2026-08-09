@@ -1,0 +1,5 @@
+{
+  "description": "Placeholder golden reference — replace with Python firefly outputs for strict parity tests",
+  "tolerance_rtol": 1e-5,
+  "spectrum": "example_data/spec-0266-51602-0001.dat"
+}
