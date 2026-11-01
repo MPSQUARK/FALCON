@@ -135,7 +135,7 @@ flowchart TD
     end
 
     F_BATCH --> F_RUNNER["SpectralFitRunner.FitBatch(...)<br/>↔ Firefly: outer input loop"]
-    F_UI_PARALLEL -->|_pipeline.FitFile(...)| F_FILE
+    F_UI_PARALLEL -->|"pipeline FitFile"| F_FILE
     F_RUNNER --> F_PARALLEL{"Batch paths empty?"}
     F_PARALLEL -->|yes| F_BATCH_ERROR["Throw InvalidOperationException"]
     F_PARALLEL -->|no| F_FILE["SpectralFitRunner.FitFile(...)"]
