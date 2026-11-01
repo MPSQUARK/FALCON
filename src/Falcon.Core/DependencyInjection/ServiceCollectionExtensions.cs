@@ -10,6 +10,7 @@ using Falcon.Core.Services.Statistics;
 using Falcon.Core.Services.Manga;
 using Falcon.Core.Services.Sfr;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
 namespace Falcon.Core.DependencyInjection;
@@ -18,17 +19,15 @@ public static class ServiceCollectionExtensions
 {
     public static IServiceCollection AddFalconCore(this IServiceCollection services)
     {
-        services.AddSingleton<GPU>(_ =>
-        {
-            var gpu = GPUManager.Default;
-            KernelModuleLoader.Load<float>(gpu, KernelWorkloads.Statistics);
-            return gpu;
-        });
+        services.AddSingleton<FalconFitSession>();
+        services.AddSingleton<GPU>(_ => FalconGpuHost.Create());
+        services.AddHostedService<FalconGpuLifetimeService>();
         services.AddSingleton<ICosmologyService, CosmologyServiceAdapter>();
         services.AddSingleton<ISpectrumReader, FitsSpectrumReaderAdapter>();
-        services.AddSingleton<ISpectralFitter, IterativeSpectralFitter>();
+        services.AddSingleton<ISpectralFitter>(sp => new IterativeSpectralFitter(sp.GetRequiredService<GPU>()));
         services.AddSingleton<IDustService, DustService>();
         services.AddSingleton<IStatisticsService, StatisticsService>();
+        services.AddSingleton<IFireflyFitsWriter, FireflyFitsWriter>();
         services.AddSingleton<IResolutionService, ResolutionServiceAdapter>();
         services.AddSingleton<ISpectralFitPipeline, SpectralFitRunner>();
         services.AddSingleton<IMangaBatchReader, MangaBatchReader>();
@@ -38,6 +37,7 @@ public static class ServiceCollectionExtensions
 
     public static void InitializeGpuData(GPU gpu, FireflyOptions options, string basePath)
     {
+        FalconGpuHost.EnsureReady(gpu);
         LegacyConfig.ApplyFrom(options, basePath);
         LegacyConfig.Setup(gpu, options);
     }

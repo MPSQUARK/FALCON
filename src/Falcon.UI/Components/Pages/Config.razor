@@ -1,35 +1,160 @@
 @page "/config"
 @rendermode InteractiveServer
 @using Falcon.Core.Configuration
+@inject Falcon.UI.Services.FalconAnalysisService Analysis
 
-<PageTitle>Configuration</PageTitle>
+<PageTitle>Configuration — FALCON</PageTitle>
 
-<h2>YAML Configuration</h2>
-<p>Path to config file:</p>
-<input @bind="ConfigPath" style="width: 100%; max-width: 600px" />
-<button @onclick="LoadConfig">Load</button>
+<PageHeader Title="Configuration"
+            Subtitle="Edit and save the YAML settings that drive model selection, dust, and fitting." />
 
-@if (Loaded)
-{
-    <pre>@Preview</pre>
-}
+<div class="falcon-card">
+    <div class="card-header">
+        <div>
+            <h2>YAML config</h2>
+            <p>Path relative to the application directory, or an absolute path</p>
+        </div>
+        <div class="falcon-btn-group">
+            <button type="button" class="falcon-btn falcon-btn-ghost" @onclick="Reload" disabled="@Saving">Reload</button>
+            <button type="button" class="falcon-btn falcon-btn-primary" @onclick="Save" disabled="@Saving || !IsDirty">@(Saving ? "Saving…" : "Save")</button>
+        </div>
+    </div>
+    <div class="card-body">
+        <div class="falcon-field">
+            <label class="falcon-label" for="config-file">Config file</label>
+            <div class="falcon-input-row">
+                <input id="config-file" class="falcon-input falcon-input-mono" @bind="ConfigPath" @bind:event="oninput" />
+                <button type="button" class="falcon-btn falcon-btn-ghost" @onclick="Reload">Open</button>
+            </div>
+        </div>
+
+        @if (!string.IsNullOrEmpty(StatusMessage))
+        {
+            <div class="falcon-alert @StatusClass" role="status">@StatusMessage</div>
+        }
+
+        @if (Loaded)
+        {
+            @if (NotFound)
+            {
+                <div class="falcon-alert falcon-alert-error" role="alert">File not found — create content below and save to create it.</div>
+            }
+
+            <div class="falcon-field">
+                <label class="falcon-label" for="config-editor">Editor</label>
+                <textarea id="config-editor"
+                          class="config-editor falcon-input-mono"
+                          rows="28"
+                          @bind="EditorText"
+                          @bind:event="oninput"></textarea>
+            </div>
+
+            @if (!NotFound && !string.IsNullOrEmpty(ResolvedPath))
+            {
+                <p class="config-path-hint">Editing <code>@ResolvedPath</code></p>
+            }
+        }
+    </div>
+</div>
 
 @code {
     string ConfigPath { get; set; } = "configs/example.yaml";
+    string EditorText { get; set; } = "";
+    string SavedText { get; set; } = "";
+    string ResolvedPath { get; set; } = "";
+    string StatusMessage { get; set; } = "";
+    string StatusClass { get; set; } = "falcon-alert-info";
     bool Loaded { get; set; }
-    string Preview { get; set; } = "";
+    bool NotFound { get; set; }
+    bool Saving { get; set; }
 
-    void LoadConfig()
+    bool IsDirty => EditorText != SavedText;
+
+    protected override void OnInitialized() => Reload();
+
+    void Reload()
     {
-        var path = Path.IsPathRooted(ConfigPath) ? ConfigPath : Path.Combine(AppContext.BaseDirectory, ConfigPath);
-        if (!File.Exists(path))
+        StatusMessage = "";
+        ResolvedPath = Analysis.ResolvePath(ConfigPath);
+        if (!File.Exists(ResolvedPath))
         {
-            Preview = $"Not found: {path}";
+            NotFound = true;
             Loaded = true;
+            if (string.IsNullOrEmpty(EditorText))
+                EditorText = DefaultYaml();
+            SavedText = "";
             return;
         }
-        var opts = YamlConfigurationExtensions.LoadFireflyYaml(path);
-        Preview = $"Model: {opts.Model.Library}\nInput: {opts.Input.SpectrumPath}\nMax iterations: {opts.Fitting.MaxIterations}";
-        Loaded = true;
+
+        try
+        {
+            EditorText = File.ReadAllText(ResolvedPath);
+            SavedText = EditorText;
+            _ = YamlConfigurationExtensions.LoadFireflyYaml(ResolvedPath);
+            NotFound = false;
+            Loaded = true;
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"YAML parse error: {ex.Message}";
+            StatusClass = "falcon-alert-error";
+            Loaded = true;
+            NotFound = false;
+        }
     }
+
+    async Task Save()
+    {
+        Saving = true;
+        StatusMessage = "";
+        try
+        {
+            ResolvedPath = Analysis.ResolvePath(ConfigPath);
+            var dir = Path.GetDirectoryName(ResolvedPath);
+            if (!string.IsNullOrEmpty(dir))
+                Directory.CreateDirectory(dir);
+
+            _ = YamlConfigurationExtensions.LoadFireflyYamlFromString(EditorText);
+
+            await File.WriteAllTextAsync(ResolvedPath, EditorText);
+            SavedText = EditorText;
+            NotFound = false;
+            StatusMessage = $"Saved to {ResolvedPath}";
+            StatusClass = "falcon-alert-success";
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = ex.Message;
+            StatusClass = "falcon-alert-error";
+        }
+        Saving = false;
+    }
+
+    static string DefaultYaml() => """
+        input:
+          spectrum_path: assets/sample-data
+          input_glob: "*.fits"
+          redshift: 0.021275453
+          write_results: true
+
+        model:
+          library: MaStar-E
+          imf: Kroupa
+          downgrade_models: true
+          model_key: 18
+
+        fitting:
+          engine: firefly
+          legacy_gpu_fallback: true
+          max_iterations: 10
+
+        dust:
+          hpf_mode: on
+          dust_law: calzetti
+
+        paths:
+          stellar_population_models: assets/stellar-population-models
+          dust_maps: assets/dust-maps
+          output: output
+        """;
 }

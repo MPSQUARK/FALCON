@@ -1,9 +1,34 @@
 ﻿@inherits LayoutComponentBase
 
-@Body
+<div class="falcon-app">
+    <aside class="falcon-sidebar">
+        <div class="sidebar-brand">
+            <div class="brand-mark" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M12 2L4 7v10l8 5 8-5V7L12 2z"/>
+                    <path d="M12 22V12"/>
+                    <path d="M4 7l8 5 8-5"/>
+                </svg>
+            </div>
+            <div>
+                <span class="brand-name">FALCON</span>
+                <span class="brand-tag">Stellar population fitting</span>
+            </div>
+        </div>
+        <div class="sidebar-spectrum" aria-hidden="true"></div>
+        <NavMenu />
+        <footer class="sidebar-footer">GPU · BAVCL · Firefly</footer>
+    </aside>
+
+    <div class="falcon-main">
+        <main class="falcon-content">
+            @Body
+        </main>
+    </div>
+</div>
 
 <div id="blazor-error-ui" data-nosnippet>
     An unhandled error has occurred.
     <a href="." class="reload">Reload</a>
-    <span class="dismiss">🗙</span>
+    <span class="dismiss">✕</span>
 </div>

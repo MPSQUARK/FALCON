@@ -2,6 +2,8 @@ using ILGPU;
 using ILGPU.Runtime;
 using ILGPU.Algorithms;
 using BAVCL;
+using BAVCL.Core;
+using System.Runtime.CompilerServices;
 
 using Falcon.Core.Constants;
 
@@ -9,6 +11,7 @@ namespace Falcon.Core.Services.Cosmology;
 
 public class CosmologyService
 {
+    static readonly ConditionalWeakTable<GPU, Action<AcceleratorStream, Index1D, ArrayView<float>, float, float, float, float, float, float, float>> IntegrationKernelCache = new();
 
     float
         Oc0,
@@ -316,18 +319,17 @@ public class CosmologyService
     {
         // WARNING THIS NEEDS ATTENTION!!!
         Vector opz = Vector.Linspace(gpu, 1, z, XMath.Abs((int)(z / dz)));
-        // WARNING THIS NEEDS ATTENTION!!!
 
-        opz.IncrementLiveCount();
-        MemoryBuffer1D<float, Stride1D.Dense> opzBuffer = opz.GetBuffer();
+        using (GpuScope.Begin(opz))
+        {
+            MemoryBuffer1D<float, Stride1D.Dense> opzBuffer = opz.GetBuffer();
+            var kernel = IntegrationKernelCache.GetValue(gpu, static g =>
+                g.accelerator.LoadAutoGroupedKernel<Index1D, ArrayView<float>, float, float, float, float, float, float, float>(GPU_IntegrationKernal));
+            kernel(gpu.accelerator.DefaultStream, opzBuffer.IntExtent, opzBuffer.View, dz, (float)Ogamma0, Om0, Ode0, neff_per_nu, nmasslessnu, nu_y[0]);
+            gpu.accelerator.Synchronize();
+        }
 
-        var kernel = gpu.accelerator.LoadAutoGroupedKernel<Index1D, ArrayView<float>, float, float, float, float, float, float, float>(GPU_IntegrationKernal);
-        kernel(gpu.accelerator.DefaultStream, opzBuffer.IntExtent, opzBuffer.View, dz, (float)Ogamma0, Om0, Ode0, neff_per_nu, nmasslessnu, nu_y[0]);
-        gpu.accelerator.Synchronize();
-
-        float sum = opz.Sum();
-
-        opz.DecrementLiveCount();
+        float sum = opz.SumX();
 
         // WARNING THIS NEEDS ATTENTION!!!
         if (z < 0) { sum = -sum; }

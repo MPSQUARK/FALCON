@@ -1,15 +1,49 @@
 ﻿@page "/"
 @rendermode InteractiveServer
 
-<PageTitle>FALCON</PageTitle>
+<PageTitle>FALCON — Spectral Fitting</PageTitle>
 
-<h1>FALCON Spectral Fitting</h1>
-<p>GPU-accelerated firefly port using BAVCL.</p>
+<section class="hero">
+    <span class="hero-eyebrow">GPU-accelerated · Firefly port</span>
+    <h1 class="hero-title">Fit galaxy spectra with <span>FALCON</span></h1>
+    <p class="hero-desc">
+        Stellar population synthesis for SDSS and MaNGA spectra.
+        Select galaxies, run fits, and explore model–data comparisons interactively.
+    </p>
+</section>
 
-<nav>
-    <ul>
-        <li><a href="/config">Configuration</a></li>
-        <li><a href="/run">Run analysis</a></li>
-        <li><a href="/plots">View plots</a></li>
-    </ul>
-</nav>
+<div class="quick-grid">
+    <a href="/run" class="quick-card">
+        <div class="quick-card-icon accent">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <polygon points="5 3 19 12 5 21 5 3"/>
+            </svg>
+        </div>
+        <h3>Run analysis</h3>
+        <p>Choose spectra from your sample set and launch GPU-accelerated fits.</p>
+        <span class="quick-card-arrow">Get started →</span>
+    </a>
+
+    <a href="/plots" class="quick-card">
+        <div class="quick-card-icon">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M3 3v18h18"/><path d="M7 16l4-6 4 3 5-8"/>
+            </svg>
+        </div>
+        <h3>View results</h3>
+        <p>Inspect spectrum plots, PDF averages, and top-N model solutions.</p>
+        <span class="quick-card-arrow">Open plots →</span>
+    </a>
+
+    <a href="/config" class="quick-card">
+        <div class="quick-card-icon">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <circle cx="12" cy="12" r="3"/>
+                <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2"/>
+            </svg>
+        </div>
+        <h3>Configuration</h3>
+        <p>Review YAML settings for models, dust, masking, and fit parameters.</p>
+        <span class="quick-card-arrow">View config →</span>
+    </a>
+</div>

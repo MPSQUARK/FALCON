@@ -3,8 +3,6 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.0.31912.275
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "BAVCL", "..\BAVCL\BAVCL.csproj", "{79F750A5-15CB-4A49-9117-6AAA9B49A38B}"
-EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{827E0CD3-B72D-47B6-A68D-7590B98EB39B}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Falcon.Core", "src\Falcon.Core\Falcon.Core.csproj", "{24BD17E5-985C-45E6-8E0C-C86D7C87B471}"
@@ -27,18 +25,6 @@ Global
 		Release|x86 = Release|x86
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
-		{79F750A5-15CB-4A49-9117-6AAA9B49A38B}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{79F750A5-15CB-4A49-9117-6AAA9B49A38B}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{79F750A5-15CB-4A49-9117-6AAA9B49A38B}.Debug|x64.ActiveCfg = Debug|Any CPU
-		{79F750A5-15CB-4A49-9117-6AAA9B49A38B}.Debug|x64.Build.0 = Debug|Any CPU
-		{79F750A5-15CB-4A49-9117-6AAA9B49A38B}.Debug|x86.ActiveCfg = Debug|Any CPU
-		{79F750A5-15CB-4A49-9117-6AAA9B49A38B}.Debug|x86.Build.0 = Debug|Any CPU
-		{79F750A5-15CB-4A49-9117-6AAA9B49A38B}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{79F750A5-15CB-4A49-9117-6AAA9B49A38B}.Release|Any CPU.Build.0 = Release|Any CPU
-		{79F750A5-15CB-4A49-9117-6AAA9B49A38B}.Release|x64.ActiveCfg = Release|Any CPU
-		{79F750A5-15CB-4A49-9117-6AAA9B49A38B}.Release|x64.Build.0 = Release|Any CPU
-		{79F750A5-15CB-4A49-9117-6AAA9B49A38B}.Release|x86.ActiveCfg = Release|Any CPU
-		{79F750A5-15CB-4A49-9117-6AAA9B49A38B}.Release|x86.Build.0 = Release|Any CPU
 		{24BD17E5-985C-45E6-8E0C-C86D7C87B471}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{24BD17E5-985C-45E6-8E0C-C86D7C87B471}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{24BD17E5-985C-45E6-8E0C-C86D7C87B471}.Debug|x64.ActiveCfg = Debug|Any CPU

@@ -1,20 +1,410 @@
 @page "/plots"
 @rendermode InteractiveServer
+@using Falcon.Core.Abstractions
+@using Falcon.Core.Services.IO
+@using Falcon.UI.Services
+@inject FalconAnalysisService Analysis
 
-<PageTitle>Plots</PageTitle>
+<PageTitle>Results — FALCON</PageTitle>
 
-<h2>Result Plots</h2>
-<p>Run <code>python scripts/plot_results.py output/spec.txt --out wwwroot/plots/latest.png</code> then refresh.</p>
+<PageHeader Title="Results &amp; plots"
+            Subtitle="Select a top solution to inspect its properties, SSP mix, and spectrum.">
+    <button class="falcon-btn falcon-btn-ghost falcon-btn-sm" @onclick="RefreshList">Refresh</button>
+</PageHeader>
 
-@if (PlotExists)
+<div class="falcon-card">
+    <div class="card-body">
+        @if (ResultFiles.Count > 0)
+        {
+            <div class="falcon-field">
+                <label class="falcon-label" for="results-select">Results file</label>
+                <select id="results-select" class="falcon-select" @bind="SelectedFile" @bind:after="OnSelectionChanged">
+                    @foreach (var f in ResultFiles)
+                    {
+                        <option value="@f">@Path.GetFileName(f)</option>
+                    }
+                </select>
+            </div>
+        }
+        else
+        {
+            <div class="empty-state">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+                    <path d="M3 3v18h18"/><path d="M7 16l4-6 4 3 5-8"/>
+                </svg>
+                <p>No results yet. Run a fit on the <a href="/run">Run analysis</a> page first.</p>
+            </div>
+        }
+
+        @if (!string.IsNullOrEmpty(Error))
+        {
+            <div class="falcon-alert falcon-alert-error" role="alert">@Error</div>
+        }
+    </div>
+</div>
+
+@if (Document is not null)
 {
-    <img src="/plots/latest.png" alt="Latest plot" style="max-width:100%" />
-}
-else
-{
-    <p>No plot at wwwroot/plots/latest.png yet.</p>
+    <div class="meta-grid">
+        <span class="falcon-stat-pill"><strong>z</strong> @Document.Redshift.ToString("F4")</span>
+        <span class="falcon-stat-pill"><strong>E(B−V)</strong> @Document.Ebv.ToString("F4")</span>
+        <span class="falcon-stat-pill">
+            <strong>Converged</strong>
+            <span class="falcon-badge @(Document.Converged ? "falcon-badge-success" : "falcon-badge-muted")">
+                @(Document.Converged ? "Yes" : "No")
+            </span>
+        </span>
+        <span class="falcon-stat-pill"><strong>Engine</strong> @Document.Engine</span>
+    </div>
+
+    <div class="falcon-card">
+        <div class="card-header">
+            <div>
+                <h2>Top solutions</h2>
+                <p>Click a row to view its properties, SSP mix, and spectrum</p>
+            </div>
+        </div>
+        <div class="card-body card-body-flush">
+            <div class="falcon-table-wrap">
+                <table class="falcon-table falcon-table-selectable">
+                    <thead>
+                        <tr>
+                            <th>Rank</th>
+                            <th title="Reduced chi-squared; lower is a better fit.">χ²/ν</th>
+                            <th title="Relative likelihood of this solution among those explored; higher is better.">Rel. prob.</th>
+                            <th title="Light-weighted age of the SSP mix.">Age (Gyr)</th>
+                            <th title="Light-weighted [Z/H] in dex (log₁₀ Z/Z☉); 0 = solar.">[Z/H]</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var sol in Document.TopSolutions)
+                        {
+                            <tr class="solution-row @(sol.Rank == SelectedRank ? "row-best-fit" : "")"
+                                @onclick="() => SelectSolution(sol.Rank)">
+                                <td><strong>@sol.Rank</strong></td>
+                                <td class="mono">@FormatChi(sol)</td>
+                                <td class="mono">@FormatProb(sol.Probability)</td>
+                                <td class="mono">@FormatAge(sol.LightWeightedAgeGyr)</td>
+                                <td class="mono">@FormatMetal(sol.LightWeightedMetal)</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    @if (SolutionProperties.Count > 0)
+    {
+        <div class="falcon-card">
+            <div class="card-header">
+                <div>
+                    <h2>Predicted properties</h2>
+                    <p>Solution #@SelectedRank</p>
+                </div>
+            </div>
+            <div class="card-body">
+                <div class="property-grid">
+                    @foreach (var g in SolutionProperties)
+                    {
+                        <div class="property-card" title="@g.HelpText">
+                            <span class="property-label" title="@g.HelpText">@g.Label</span>
+                            <span class="property-value">
+                                @FormatPropertyValue(g)
+                                @if (!string.IsNullOrEmpty(g.Units) && g.Units != "fraction")
+                                {
+                                    <span class="property-units">@g.Units</span>
+                                }
+                            </span>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+    }
+
+    @if (SelectedComponents.Count > 0)
+    {
+        <div class="falcon-card">
+            <div class="card-header">
+                <div>
+                    <h2>SSP composition</h2>
+                    <p>Solution #@SelectedRank — simple stellar population weights</p>
+                </div>
+            </div>
+            <div class="card-body card-body-flush">
+                <p class="ssp-ratio-summary mono">@SspRatioSummary</p>
+                <div class="falcon-table-wrap">
+                    <table class="falcon-table">
+                        <thead>
+                            <tr>
+                                <th>SSP</th>
+                                <th>Age (Gyr)</th>
+                                <th title="[Z/H] in dex (log₁₀ Z/Z☉).">[Z/H]</th>
+                                <th>Light weight</th>
+                                <th>Fraction</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var c in SelectedComponents)
+                            {
+                                <tr>
+                                    <td>#@c.ModelIndex</td>
+                                    <td class="mono">@FormatAge(c.AgeGyr)</td>
+                                    <td class="mono">@c.Metal.ToString("F2")</td>
+                                    <td class="mono">@c.LightWeight.ToString("F4")</td>
+                                    <td>
+                                        <div class="ssp-bar-wrap">
+                                            <div class="ssp-bar" style="width: @($"{c.LightWeight * 100:F1}%")"></div>
+                                            <span class="ssp-bar-label">@($"{c.LightWeight * 100:F1}%")</span>
+                                        </div>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    }
+
+    <div class="falcon-card">
+        <div class="card-header">
+            <div>
+                <h2>Spectrum</h2>
+                <p>@Path.GetFileName(Document.SourceFile) — solution #@SelectedRank</p>
+            </div>
+            <div class="falcon-btn-group">
+                <div class="falcon-segmented" role="group" aria-label="Plot wavelength range">
+                    <button type="button"
+                            class="falcon-btn falcon-btn-sm @(PlotRange == PlotRangeMode.SnipToModelOverlap ? "falcon-btn-primary" : "falcon-btn-ghost")"
+                            @onclick="() => SetPlotRange(PlotRangeMode.SnipToModelOverlap)"
+                            disabled="@Plotting">
+                        Model overlap
+                    </button>
+                    <button type="button"
+                            class="falcon-btn falcon-btn-sm @(PlotRange == PlotRangeMode.Full ? "falcon-btn-primary" : "falcon-btn-ghost")"
+                            @onclick="() => SetPlotRange(PlotRangeMode.Full)"
+                            disabled="@Plotting">
+                        Full spectrum
+                    </button>
+                </div>
+                @if (Plotting)
+                {
+                    <span class="falcon-badge falcon-badge-muted">Updating plot…</span>
+                }
+                <button type="button" class="falcon-btn falcon-btn-ghost falcon-btn-sm"
+                        @onclick="RegeneratePlot" disabled="@Plotting">
+                    Update plot
+                </button>
+                @if (!string.IsNullOrEmpty(PlotUrl))
+                {
+                    <button type="button" class="falcon-btn falcon-btn-ghost falcon-btn-sm"
+                            @onclick="() => ShowFullscreen = true">
+                        Fullscreen
+                    </button>
+                }
+            </div>
+        </div>
+        <div class="card-body">
+            @if (!string.IsNullOrEmpty(PlotUrl))
+            {
+                <div class="plot-frame" @onclick="() => ShowFullscreen = true">
+                    <img src="@PlotUrl?v=@PlotVersion" alt="Spectrum fit for @Path.GetFileName(Document.SourceFile)" />
+                </div>
+            }
+            else if (!Plotting)
+            {
+                <div class="falcon-alert falcon-alert-info">
+                    Plot not available. Click <strong>Update plot</strong> to generate.
+                </div>
+            }
+        </div>
+    </div>
+
+    @if (ShowFullscreen && !string.IsNullOrEmpty(PlotUrl))
+    {
+        <div class="plot-fullscreen-backdrop" @onclick="() => ShowFullscreen = false">
+            <div class="plot-fullscreen-panel" @onclick:stopPropagation="true">
+                <button type="button" class="plot-fullscreen-close falcon-btn falcon-btn-ghost falcon-btn-sm"
+                        @onclick="() => ShowFullscreen = false">Close</button>
+                <img src="@PlotUrl?v=@PlotVersion" alt="Spectrum fit fullscreen" />
+            </div>
+        </div>
+    }
 }
 
 @code {
-    bool PlotExists => File.Exists(Path.Combine(AppContext.BaseDirectory, "wwwroot", "plots", "latest.png"));
+    [SupplyParameterFromQuery(Name = "file")]
+    public string? QueryFile { get; set; }
+
+    List<string> ResultFiles { get; set; } = [];
+    string SelectedFile { get; set; } = "";
+    FalconResultsDocument? Document { get; set; }
+    string PlotUrl { get; set; } = "";
+    int PlotVersion { get; set; }
+    string Error { get; set; } = "";
+    bool Plotting { get; set; }
+    bool ShowFullscreen { get; set; }
+    int SelectedRank { get; set; } = 1;
+    PlotRangeMode PlotRange { get; set; } = PlotRangeMode.SnipToModelOverlap;
+
+    IReadOnlyList<PdfPropertyGroup> SolutionProperties { get; set; } = [];
+    IReadOnlyList<FalconSspComponent> SelectedComponents { get; set; } = [];
+    string SspRatioSummary { get; set; } = "";
+
+    bool CanPlot => !string.IsNullOrEmpty(SelectedFile) && File.Exists(SelectedFile);
+
+    CancellationTokenSource? _plotCts;
+    int _plotRequestId;
+
+    protected override void OnInitialized() => RefreshList();
+
+    void RefreshList()
+    {
+        ResultFiles = Analysis.ListResultFiles().ToList();
+        if (!string.IsNullOrEmpty(QueryFile))
+        {
+            var match = ResultFiles.FirstOrDefault(f =>
+                string.Equals(Path.GetFileName(f), QueryFile, StringComparison.OrdinalIgnoreCase));
+            if (match is not null) SelectedFile = match;
+        }
+        if (string.IsNullOrEmpty(SelectedFile) && ResultFiles.Count > 0)
+            SelectedFile = ResultFiles[0];
+
+        _ = LoadDocumentAsync();
+    }
+
+    async Task OnSelectionChanged()
+    {
+        PlotUrl = "";
+        await LoadDocumentAsync();
+    }
+
+    async Task LoadDocumentAsync()
+    {
+        Error = "";
+        PlotUrl = "";
+        Document = null;
+        SolutionProperties = [];
+        SelectedComponents = [];
+        SspRatioSummary = "";
+        SelectedRank = 1;
+
+        if (!CanPlot) return;
+        try
+        {
+            Document = Analysis.LoadResults(SelectedFile);
+            ApplySelectedSolution();
+            await GeneratePlotAsync();
+        }
+        catch (Exception ex)
+        {
+            Error = ex.Message;
+        }
+    }
+
+    async Task SelectSolution(int rank)
+    {
+        if (Document is null || rank == SelectedRank) return;
+        SelectedRank = rank;
+        ApplySelectedSolution();
+        await GeneratePlotAsync();
+    }
+
+    void ApplySelectedSolution()
+    {
+        if (Document is null) return;
+
+        var sol = Document.TopSolutions.FirstOrDefault(s => s.Rank == SelectedRank)
+            ?? Document.TopSolutions.FirstOrDefault();
+        if (sol is null) return;
+
+        SelectedRank = sol.Rank;
+        SolutionProperties = ResultsDisplayHelper.FromSolution(sol, Document);
+        SelectedComponents = sol.Components
+            .Where(c => c.LightWeight > 1e-6)
+            .OrderByDescending(c => c.LightWeight)
+            .ToList();
+        SspRatioSummary = ResultsDisplayHelper.FormatSspRatio(SelectedComponents);
+    }
+
+    async Task RegeneratePlot() => await GeneratePlotAsync();
+
+    async Task SetPlotRange(PlotRangeMode mode)
+    {
+        if (PlotRange == mode) return;
+        PlotRange = mode;
+        await GeneratePlotAsync();
+    }
+
+    async Task GeneratePlotAsync()
+    {
+        if (!CanPlot || Document is null) return;
+
+        _plotCts?.Cancel();
+        _plotCts?.Dispose();
+        var cts = new CancellationTokenSource();
+        _plotCts = cts;
+        int requestId = ++_plotRequestId;
+
+        Plotting = true;
+        Error = "";
+        await InvokeAsync(StateHasChanged);
+
+        int rank = SelectedRank;
+        string file = SelectedFile;
+        var range = PlotRange;
+        try
+        {
+            string url = await Task.Run(() => Analysis.GeneratePlot(file, rank, range), cts.Token);
+            if (cts.IsCancellationRequested || requestId != _plotRequestId) return;
+            PlotUrl = url;
+            PlotVersion++;
+        }
+        catch (OperationCanceledException)
+        {
+            // Superseded by a newer plot request.
+        }
+        catch (Exception ex)
+        {
+            if (cts.IsCancellationRequested || requestId != _plotRequestId) return;
+            Error = $"Plot failed: {ex.Message}";
+            PlotUrl = "";
+        }
+        finally
+        {
+            if (requestId == _plotRequestId)
+            {
+                Plotting = false;
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+    }
+
+    string FormatChi(FalconSolutionRecord sol)
+    {
+        if (sol.ChiSquaredPerDof > 0) return sol.ChiSquaredPerDof.ToString("F2");
+        if (Document is not null && Document.DegreesOfFreedom > 0 && Document.MinChiSquared > 0)
+            return (Document.MinChiSquared / Document.DegreesOfFreedom).ToString("F2");
+        return "—";
+    }
+
+    static string FormatMetal(double linearSolarZ) =>
+        linearSolarZ > 0 ? Math.Log10(linearSolarZ).ToString("F2") : "—";
+
+    static string FormatAge(double ageGyr) =>
+        ageGyr >= 0.01 ? ageGyr.ToString("F2") : ageGyr.ToString("G3");
+
+    static string FormatProb(double p) =>
+        p >= 0.01 ? p.ToString("P1") : p.ToString("P3");
+
+    static string FormatPropertyValue(PdfPropertyGroup g)
+    {
+        if (double.IsNaN(g.Value)) return "—";
+        if (g.Units == "G☉") return g.Value.ToString("F1");
+        if (g.Label.Contains("probability", StringComparison.OrdinalIgnoreCase))
+            return g.Value >= 0.01 ? g.Value.ToString("P2") : g.Value.ToString("P4");
+        return g.Value.ToString("G5");
+    }
 }

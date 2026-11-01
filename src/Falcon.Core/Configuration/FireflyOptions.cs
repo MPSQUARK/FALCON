@@ -29,7 +29,7 @@ public sealed class ModelOptions
     public string Library { get; set; } = "MaStar-E";
     public string Imf { get; set; } = "Kroupa";
     public float AgeMin { get; set; }
-    public float AgeMax { get; set; } = 14.7e9f;
+    public float AgeMax { get; set; } = 14.7f;
     public float MetallicityMin { get; set; } = -3f;
     public float MetallicityMax { get; set; } = 3f;
     public bool DowngradeModels { get; set; } = true;
@@ -38,11 +38,22 @@ public sealed class ModelOptions
 
 public sealed class FittingOptions
 {
+    public string Engine { get; set; } = "firefly";
+    public bool LegacyGpuFallback { get; set; } = true;
     public int MaxIterations { get; set; } = 10;
+    public int FitPerIterationCap { get; set; } = 1000;
     public int PdfSampling { get; set; } = 200;
     public float MaxEbv { get; set; } = 1.0f;
     public int NumDustVals { get; set; } = 200;
     public float DustSmoothingLength { get; set; } = 100f;
+    public int TopResultsCount { get; set; } = 3;
+    public int MaxSspComponents { get; set; } = 5;
+    public bool UseGpuEvaluator { get; set; } = false;
+    public bool ExperimentalMixSearch { get; set; } = false;
+    public int ExperimentalMixSearchMaxEvals { get; set; } = 64;
+    /// <summary>Max concurrent spectrum fits. 0 = unlimited (same as master/BAVCL_Update <c>Parallel.For(0, files.Length)</c>).</summary>
+    public int MaxParallelFits { get; set; }
+    public double[] WaveLimits { get; set; } = [0, 99_999_990];
 }
 
 public sealed class DustOptions

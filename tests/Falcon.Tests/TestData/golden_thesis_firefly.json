@@ -1,0 +1,65 @@
+{
+  "description": "FIREFLY reference results from master's thesis (SDSS DR16, 6 galaxies). Used for regression sanity checks.",
+  "source": "thesis Table 2-3, FIREFLY column",
+  "tolerance_age_gyr": 3.0,
+  "tolerance_metal_dex": 0.5,
+  "tolerance_chi_dof": 50.0,
+  "galaxies": [
+    {
+      "id": "0266-51630-0016",
+      "fits": "spec-0266-51630-0016.fits",
+      "redshift": 0.517111,
+      "pipeline_z": 0.12659,
+      "firefly_age_gyr": 1.06,
+      "firefly_metal_dex": 0.349,
+      "firefly_mass_gmsun": 38.7,
+      "firefly_chi_dof": 2.93
+    },
+    {
+      "id": "0266-51630-0022",
+      "fits": "spec-0266-51630-0022.fits",
+      "redshift": 0.06336,
+      "firefly_age_gyr": 9.96,
+      "firefly_metal_dex": 0.233,
+      "firefly_mass_gmsun": 41.3,
+      "firefly_chi_dof": 46.29
+    },
+    {
+      "id": "0266-51630-0034",
+      "fits": "spec-0266-51630-0034.fits",
+      "redshift": 0.371149,
+      "firefly_age_gyr": 5.02,
+      "firefly_metal_dex": 0.309,
+      "firefly_mass_gmsun": 40.1,
+      "firefly_chi_dof": 80.78
+    },
+    {
+      "id": "0266-51630-0059",
+      "fits": "spec-0266-51630-0059.fits",
+      "redshift": 0.327572,
+      "firefly_age_gyr": 1.58,
+      "firefly_metal_dex": 0.074,
+      "firefly_mass_gmsun": 21.9,
+      "firefly_chi_dof": 244.57
+    },
+    {
+      "id": "0266-51630-0169",
+      "fits": "spec-0266-51630-0169.fits",
+      "redshift": 0.090317,
+      "firefly_age_gyr": 11.98,
+      "firefly_metal_dex": 0.075,
+      "firefly_mass_gmsun": 79.3,
+      "firefly_chi_dof": 3.42
+    },
+    {
+      "id": "0266-51630-0182",
+      "fits": "spec-0266-51630-0182.fits",
+      "redshift": 0.12659,
+      "pipeline_z": 0.517111,
+      "firefly_age_gyr": 6.91,
+      "firefly_metal_dex": -0.06,
+      "firefly_mass_gmsun": 39.9,
+      "firefly_chi_dof": 41.96
+    }
+  ]
+}

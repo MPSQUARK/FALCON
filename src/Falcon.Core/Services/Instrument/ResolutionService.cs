@@ -1,137 +1,110 @@
 using BAVCL;
+using BAVCL.Core;
+using BAVCL.Modules.Masking;
+using BAVCL.Modules.Statistics;
+using BAVCL.Modules.Structural;
+using BAVCL.Types;
+using Falcon.Core.Constants;
+using Falcon.Core.Services.IO;
 using ILGPU;
 using ILGPU.Algorithms;
 using ILGPU.Runtime;
-using Falcon.Core.Constants;
-using Falcon.Core.Services.IO;
+using System.Runtime.CompilerServices;
 
 namespace Falcon.Core.Services.Instrument;
 
 public class ResolutionService
 {
-    // Constructor
-    public ResolutionService(GPU gpu, Vector wave_in, Vector sres_in, bool log10_in = false) //, string interp_ext_in = "extrapolate"
-    {
+    const float IsCloseAtol = 1e-8f;
 
+    public ResolutionService(GPU gpu, Vector wave_in, Vector sres_in, bool log10_in = false)
+    {
         this.gpu = gpu;
 
-        // wave MUST be 1D and = to sres shape
         if (wave_in.Length != sres_in.Length)
-        {
             throw new Exception("wave_in and sres_in must be of equal length");
-        }
 
-        interpolator = new LinearInterpolation(wave_in.Pull(), sres_in.Pull()); // k = 1, and extrapolate 
+        waveVec = wave_in;
+        sresVec = sres_in;
+        ReadOnlySpan<float> waveCpu = wave_in.RetrieveReadOnlySpan();
+        ReadOnlySpan<float> sresCpu = sres_in.RetrieveReadOnlySpan();
+        interpolator = new LinearInterpolation(waveCpu.ToArray(), sresCpu.ToArray());
+        waveGpu = new Vector(gpu, interpolator.X, 0, false);
+        sresGpu = new Vector(gpu, interpolator.Y, 0, false);
 
         log10 = log10_in;
 
         if (log10_in)
         {
-            dv = Spectrum_velocity_scale(wave_in);
+            dv = Spectrum_velocity_scale(waveGpu);
             return;
         }
 
-        // If log10_in is false
-        dw = wave_in.Value[1] - wave_in.Value[0];
-
-        // min_sig, sig_pd, sig_mask, sig_vo = NONE
-
+        dw = waveGpu.GetAt(1) - waveGpu.GetAt(0);
     }
 
-
-    // Variable Block
     readonly GPU gpu;
+    readonly Vector waveVec;
+    readonly Vector sresVec;
+    readonly Vector waveGpu;
+    readonly Vector sresGpu;
+
     protected bool log10 { get; private set; }
     protected float dv { get; private set; }
     protected float dw { get; private set; }
-    /// <summary>
-    /// X : wave
-    /// Y : sres
-    /// </summary>
+
+    /// <summary>Velocity step per pixel in km/s when <see cref="log10"/> is true (firefly <c>dv</c>).</summary>
+    public float Dv => dv;
+
     public LinearInterpolation interpolator { get; set; }
     protected float min_sig { get; set; }
     public float sig_vo { get; set; }
     public Vector sig_pd { get; set; }
-    public bool[] Sig_mask { get; set; }
+    public Mask Sig_mask { get; set; }
 
+    private float Spectrum_velocity_scale(Vector wave) =>
+        FireflyConstants.c_kms * Spectral_coordinate_step(wave, log: true, _base: MathF.E);
 
-    // Methods
-    private float Spectrum_velocity_scale(Vector wave)
-    {
-        return FireflyConstants.c_kms * Spectral_coordinate_step(wave, log: true, _base: MathF.E);
-    }
-
-    private float Spectral_coordinate_step(Vector wave, bool log = false, float _base = 10f)
+    private static float Spectral_coordinate_step(Vector wave, bool log = false, float _base = 10f)
     {
         if (_base == MathF.E && log)
-        {
-            wave.SyncCPU();
-            Vector wave_1 = new(gpu, wave.Value[1..]);
-            Vector wave_2 = new(gpu, wave.Value[..^1]);
-
-            return (wave_1.LogXIP(_base) - wave_2.LogXIP(_base)).Mean();
-        }
+            return Vector.DiffX(wave.LogXIP(_base)).MeanX();
 
         if (log)
-        {
-            return Vector.DiffX(wave).LogXIP(_base).IPOP(XMath.Rcp(XMath.Log(_base)), Operations.multiply).Mean();
-        }
+            return Vector.DiffX(wave).LogXIP(_base).IPOP(XMath.Rcp(XMath.Log(_base)), Operations.multiply).MeanX();
 
-
-        // If log is false
-        return Vector.DiffX(wave).Mean();
+        return Vector.DiffX(wave).MeanX();
     }
 
-
-
-    public void match(ResolutionService new_sres, bool no_offset = true, float min_sig_pix = 0f)
-    {
+    public void match(ResolutionService new_sres, bool no_offset = true, float min_sig_pix = 0f) =>
         GaussianKernelDifference(new_sres, no_offset, min_sig_pix);
-    }
 
     private void GaussianKernelDifference(ResolutionService new_sres, bool no_offset = true, float min_sig_pix = 0f)
     {
         min_sig = min_sig_pix;
 
-        Vector _wave = new(gpu, interpolator.X);
-        Vector _sres = new(gpu, interpolator.Y);
+        Vector _wave = waveGpu;
+        Vector _sres = sresGpu;
 
-        Vector interp_sres = new(gpu, new float[_wave.Length], 1, false);
-        _wave.SyncCPU();
+        Vector interp_sres = new(gpu, new float[_wave.Length], 0, false);
+        ReadOnlySpan<float> waveSpan = _wave.RetrieveReadOnlySpan();
 
-        // This could be slow??
-        for (int i = 0; i < _wave.Length; i++)
+        using (var scope = interp_sres.CpuScopeAndSync())
         {
-            interp_sres.Value[i] = new_sres.interpolator.Interpolate(_wave.Value[i]);
+            EditableView<float> view = scope.View;
+            for (int i = 0; i < waveSpan.Length; i++)
+                view[i] = new_sres.interpolator.Interpolate(waveSpan[i]);
         }
-        interp_sres.UpdateCache();
-
-        // Issue?
-
-        //float[] sig2_wd = new float[_wave.Length];
-        //for (int i = 0; i < sig2_wd.Length; i++)
-        //{
-        //    sig2_wd[i] = MathF.Pow(_wave[i] / FireflyConstants.sig2FWHM, 2f) * (1.0f / MathF.Pow(interp_sres[i], 2f) - 1.0f / MathF.Pow(_sres[i], 2f));
-        //}
-
-        //float[] sig2_vd = new float[sig2_wd.Length];
-        //for (int i = 0; i < sig2_vd.Length; i++)
-        //{
-        //    sig2_vd[i] = MathF.Pow(FireflyConstants.c_kms / _wave[i],2f) * sig2_wd[i];
-        //}
 
         Vector sig2_vd = DetermineVariance(_wave, interp_sres, _sres);
 
-
-        // OPTION 1
         if (no_offset)
         {
             sig_vo = 0f;
 
             if (log10)
             {
-                // ISSUE - dv is Supposed to be 69.02976392336477
-                finalize_GaussianKernelDifference(sig2_vd * XMath.Rcp(this.dv * this.dv));
+                finalize_GaussianKernelDifference(sig2_vd * XMath.Rcp(dv * dv));
                 return;
             }
 
@@ -139,16 +112,9 @@ public class ResolutionService
             return;
         }
 
-        // Option 2
-
-        float neg_amin_sig2_vd = -sig2_vd.Min();
-        float[] dv = new float[_wave.Length - 1];
-        for (int i = 0; i < dv.Length; i++)
-        {
-            dv[i] = FireflyConstants.c_kms * (2 * (_wave[i + 1] - _wave[i]) / (_wave[i + 1] + _wave[i]));
-        }
-
-        sig_vo = neg_amin_sig2_vd - MathF.Pow((min_sig * dv.Max()), 2f);
+        float neg_amin_sig2_vd = -sig2_vd.MinX();
+        float maxLocalDv = ComputeMaxLocalDv(_wave);
+        sig_vo = neg_amin_sig2_vd - MathF.Pow(min_sig * maxLocalDv, 2f);
 
         if (sig_vo > 0f)
         {
@@ -160,176 +126,125 @@ public class ResolutionService
             sig_vo = 0f;
         }
 
-
         Vector sig2_pd = convert_vd2pd(sig2_vd, _wave);
         finalize_GaussianKernelDifference(sig2_pd);
     }
-    private Vector DetermineVariance(Vector wave, Vector interp_sres, Vector sres)
+
+    private static float ComputeMaxLocalDv(Vector wave)
     {
-        Vector output = new(gpu, new float[wave.Length]);
-        output.IncrementLiveCount();
-
-        wave.IncrementLiveCount();
-        interp_sres.IncrementLiveCount();
-        sres.IncrementLiveCount();
-
-        var kernelWithStream = gpu.accelerator.LoadAutoGroupedKernel<Index1D, ArrayView<float>, ArrayView<float>, ArrayView<float>, ArrayView<float>, float, float>(DetermineVarianceKernel);
-
-        MemoryBuffer1D<float, Stride1D.Dense>
-            outBuffer = output.GetBuffer(),             // Output
-            waveBuffer = wave.GetBuffer(),              //  Input
-            interpsresBuffer = interp_sres.GetBuffer(), //  Input
-            sresbuffer = sres.GetBuffer();              //  Input
-
-        kernelWithStream(gpu.accelerator.DefaultStream, outBuffer.IntExtent, outBuffer.View, waveBuffer.View, interpsresBuffer.View, sresbuffer.View, FireflyConstants.sig2FWHM, FireflyConstants.c_kms);
-
-        gpu.accelerator.Synchronize();
-
-        wave.DecrementLiveCount();
-        interp_sres.DecrementLiveCount();
-        sres.DecrementLiveCount();
-        output.DecrementLiveCount();
-
-        return output;
+        ReadOnlySpan<float> w = wave.RetrieveReadOnlySpan();
+        float maxDv = 0f;
+        for (int i = 0; i < w.Length - 1; i++)
+        {
+            float local = FireflyConstants.c_kms * (2f * (w[i + 1] - w[i]) / (w[i + 1] + w[i]));
+            if (local > maxDv) maxDv = local;
+        }
+        return maxDv;
     }
-    static void DetermineVarianceKernel(Index1D index, ArrayView<float> Output, ArrayView<float> wave,
-        ArrayView<float> interp_sres, ArrayView<float> sres, float fwhm, float c)
+
+    private static Vector DetermineVariance(Vector wave, Vector interp_sres, Vector sres)
     {
-        Output[index] = XMath.Pow((c / wave[index]), 2f) * XMath.Pow((wave[index] / fwhm), 2f) *
-            (1f / XMath.Pow(interp_sres[index], 2f) - 1f / XMath.Pow(sres[index], 2f));
+        Vector cOverWave = FireflyConstants.c_kms / wave;
+        Vector cOverWaveSq = cOverWave ^ 2f;
+        Vector waveOverFwhmSq = (wave / FireflyConstants.sig2FWHM) ^ 2f;
+        Vector invInterpSq = interp_sres ^ (-2f);
+        Vector invSresSq = sres ^ (-2f);
+        return cOverWaveSq * waveOverFwhmSq * (invInterpSq - invSresSq);
     }
 
     private Vector convert_vd2pd(Vector sig2_vd, Vector wave)
     {
         if (log10)
-        {
             return sig2_vd * MathF.Pow(dv, -2f);
-        }
 
-        float inv_cdw_squ = XMath.Rcp(FireflyConstants.c_kms * FireflyConstants.c_kms * dw * dw);
-
-        return (wave * wave).IPOP(sig2_vd, Operations.multiply).IPOP(inv_cdw_squ, Operations.multiply);
+        float invCdwSq = XMath.Rcp(FireflyConstants.c_kms * FireflyConstants.c_kms * dw * dw);
+        return (wave * wave) * sig2_vd * invCdwSq;
     }
 
     private void finalize_GaussianKernelDifference(Vector sig2_pd)
     {
-        int[] indx = FitsSpectrumReader.WhereIsClose(sig2_pd.Pull(), 0f);
-        int[] nindx = FitsSpectrumReader.WhereNot(indx, sig2_pd.Length);
-
-        sig_pd = sig2_pd;
-        sig_pd.SyncCPU();
-
-        for (int i = 0; i < nindx.Length; i++)
-        {
-            sig_pd[nindx[i]] = sig2_pd[nindx[i]] / MathF.Sqrt(MathF.Abs(sig2_pd[nindx[i]]));
-        }
-        for (int i = 0; i < indx.Length; i++)
-        {
-            sig_pd[indx[i]] = 0f;
-        }
-
-        Sig_mask = new bool[sig_pd.Length];
-        for (int i = 0; i < Sig_mask.Length; i++)
-        {
-            Sig_mask[i] = sig_pd[i] < -min_sig;
-        }
-        return;
+        Mask zeroMask = sig2_pd.AbsX() <= IsCloseAtol;
+        Vector absSig2 = sig2_pd.AbsX() ^ 0.5f;
+        Vector normalized = sig2_pd / absSig2;
+        sig_pd = normalized & (~zeroMask, 0f);
+        Sig_mask = sig_pd < -min_sig;
     }
 
     public float[] adjusted_resolution(int[] indxs)
     {
-        float sig2fwhm_by_c_sq = MathF.Pow(FireflyConstants.sig2FWHM / FireflyConstants.c_kms, 2f);
-        float[] output;
-        Vector pd2vd;
+        float sig2fwhmByCSq = MathF.Pow(FireflyConstants.sig2FWHM / FireflyConstants.c_kms, 2f);
+        Vector sig2 = sig_pd * sig_pd.AbsX();
+
         if (indxs.Length == 0)
         {
-            output = new float[sig_pd.Length];
-
-            pd2vd = convert_pd2vd((+sig_pd).IPOP(sig_pd, Operations.multiply));
-
-            for (int i = 0; i < output.Length; i++)
-            {
-                output[i] = 1f / MathF.Sqrt(sig2fwhm_by_c_sq * pd2vd.Value[i]
-                     + 1f / MathF.Pow(interpolator.Y[i], 2f));
-            }
-
-            return output;
+            Vector pd2vd = convert_pd2vd(sig2);
+            Vector inner = sig2fwhmByCSq * pd2vd + (sresGpu ^ (-2f));
+            return ((inner ^ 0.5f).ReciprocalX()).RetrieveReadOnlySpan().ToArray();
         }
 
-        output = new float[indxs.Length];
-        Vector selected_sig = new(gpu, new float[indxs.Length], 1, false);
-        float[] selected_sres = new float[indxs.Length];
-        for (int i = 0; i < output.Length; i++)
+        float[] pd2vdArr = convert_pd2vd(sig2).RetrieveReadOnlySpan().ToArray();
+        var output = new float[indxs.Length];
+        for (int i = 0; i < indxs.Length; i++)
         {
-            selected_sig.Value[i] = sig_pd[indxs[i]] * MathF.Abs(sig_pd[indxs[i]]);
-            selected_sres[i] = 1f / MathF.Pow(interpolator.Y[indxs[i]], 2f);
+            int idx = indxs[i];
+            float selectedSres = 1f / MathF.Pow(interpolator.Y[idx], 2f);
+            output[i] = 1f / MathF.Sqrt(sig2fwhmByCSq * MathF.Sqrt(pd2vdArr[idx]) + selectedSres);
         }
-        selected_sig.SyncCPU();
-
-        pd2vd = convert_pd2vd(selected_sig);
-        pd2vd.SyncCPU();
-
-        for (int i = 0; i < output.Length; i++)
-        {
-            output[i] = 1f / MathF.Sqrt(sig2fwhm_by_c_sq * MathF.Sqrt(pd2vd[i]) + selected_sres[i]);
-        }
-
         return output;
     }
 
-    private Vector convert_pd2vd(Vector sig2_pd)
+    private Vector convert_pd2vd(Vector sig2Pd)
     {
         if (log10)
-        {
-            return sig2_pd * (dv * dv);
-        }
+            return sig2Pd * (dv * dv);
 
-        Vector output = sig2_pd * (FireflyConstants.c_kms * FireflyConstants.c_kms * dw * dw);
-        output.SyncCPU();
-        for (int i = 0; i < output.Length; i++)
-        {
-            output.Value[i] = output.Value[i] * XMath.Rcp(interpolator.X[i] * interpolator.X[i]);
-        }
-
-        return output;
+        float scale = FireflyConstants.c_kms * FireflyConstants.c_kms * dw * dw;
+        return sig2Pd * scale / (waveGpu * waveGpu);
     }
-
-
 }
 
 class VariableGaussianKernel
 {
+    sealed class ResolutionGpuKernels(
+        Action<AcceleratorStream, Index1D, ArrayView<float>, ArrayView<float>, ArrayView<float>, int, int> multiplySumAxZero,
+        Action<AcceleratorStream, Index1D, ArrayView<float>, ArrayView<float>, ArrayView<float>, int, int> kernCalc)
+    {
+        public Action<AcceleratorStream, Index1D, ArrayView<float>, ArrayView<float>, ArrayView<float>, int, int> MultiplySumAxZero { get; } = multiplySumAxZero;
+        public Action<AcceleratorStream, Index1D, ArrayView<float>, ArrayView<float>, ArrayView<float>, int, int> KernCalc { get; } = kernCalc;
+    }
+
+    static readonly ConditionalWeakTable<GPU, ResolutionGpuKernels> KernelCache = new();
+
+    static ResolutionGpuKernels GetKernels(GPU gpu) =>
+        KernelCache.GetValue(gpu, static g =>
+        {
+            var acc = g.accelerator;
+            return new ResolutionGpuKernels(
+                acc.LoadAutoGroupedKernel<Index1D, ArrayView<float>, ArrayView<float>, ArrayView<float>, int, int>(MultiplySumAxZeroKernel),
+                acc.LoadAutoGroupedKernel<Index1D, ArrayView<float>, ArrayView<float>, ArrayView<float>, int, int>(KernCalcKernel));
+        });
+
+    readonly ResolutionGpuKernels _kernels;
     public VariableGaussianKernel(GPU gpu, float[] sigma, float minsig = 0.01f, int nsig = 3, bool integral = false)
     {
         this.gpu = gpu;
+        _kernels = GetKernels(gpu);
         n = sigma.Length;
-        //this.sigma = (from sig in sigma
-        //              select Math.Clamp(sig, minsig, sigma.Max())).ToArray();
-        this.sigma = sigma;
+        this.sigma = (float[])sigma.Clone();
 
-        float maxSigma = sigma.Max();
-        for (int i = 0; i < sigma.Length; i++)
-        {
-            if (this.sigma[i] < minsig) { this.sigma[i] = minsig; }
-            if (this.sigma[i] > maxSigma) { this.sigma[i] = maxSigma; }
-        }
+        for (int i = 0; i < this.sigma.Length; i++)
+            this.sigma[i] = MathF.Max(minsig, MathF.Abs(this.sigma[i]));
 
         p = (int)MathF.Ceiling(this.sigma.Max() * nsig);
         m = 2 * p + 1;
 
         float interval = (2f * MathF.Abs(p)) / m - 1;
-        float[] x2 = (from val in Enumerable.Range(0, m)
-                      select MathF.Pow(-p + (val * interval), 2f)).ToArray();
+        float[] x2 = Enumerable.Range(0, m).Select(val => MathF.Pow(-p + (val * interval), 2f)).ToArray();
 
         if (!integral)
-        {
-            kernel = kernCalculation(gpu, new Vector(gpu, x2), new Vector(gpu, this.sigma));
-        }
+            kernel = kernCalculation(gpu, new Vector(gpu, x2, 0, false), new Vector(gpu, this.sigma, 0, false));
         else
-        {
             Console.WriteLine("WARNING integral = true in Variable Gaussian KERNEL");
-        }
-
     }
 
     private int n { get; set; }
@@ -337,130 +252,103 @@ class VariableGaussianKernel
     private int p { get; set; }
     private int m { get; set; }
     private Vector kernel { get; set; }
-    readonly private GPU gpu;
+    readonly GPU gpu;
 
-    public Vector Convolve(GPU gpu, Vector y) //ye=None
+    public float[] Convolve(GPU gpu, float[] y) =>
+        Convolve(gpu, new Vector(gpu, y, 0, false)).RetrieveReadOnlySpan().ToArray();
+
+    public Vector Convolve(GPU gpu, Vector y)
     {
         if (y.Length != n)
-        {
             throw new Exception("Convolution ERROR : y array not the same length as n");
+
+        using (GpuScope.BeginReadOnly(y, kernel))
+        {
+            Vector a = Create_a(y.RetrieveReadOnlySpan());
+            return MultiplySumAxZero(a, kernel);
         }
-
-        // assume ye is None
-        // if ye = None
-        Vector a = Create_a(y.Pull());
-        Vector result = MultiplySumAxZero(a, kernel); // PRECISION MAY NEED TO USE DOUBLES
-
-        // else ae = create_a(ye**2) { return sum(a* (this.kernel,axis=0)), sqrt(sum(ae*(this.kernel, axis=0)))}
-
-        return result;
     }
 
-    public Vector MultiplySumAxZero(Vector vectorA, Vector vectorB)
+    Vector MultiplySumAxZero(Vector vectorA, Vector vectorB)
     {
-        vectorA.IncrementLiveCount();
-        vectorB.IncrementLiveCount();
+        int columns = vectorA.Columns;
+        int rows = vectorA.Length / columns;
+        Vector output = new(gpu, new float[columns], 0, false);
 
-        Vector output = new(gpu, new float[vectorA.Columns]);
-
-        output.IncrementLiveCount();
-
-        var kernelWithStream = gpu.accelerator.LoadAutoGroupedKernel<Index1D, ArrayView<float>, ArrayView<float>, ArrayView<float>, int, int>(MultiplySumAxZeroKernel);
-
-        MemoryBuffer1D<float, Stride1D.Dense>
-            buffer = output.GetBuffer(),    // Output
-            buffer2 = vectorA.GetBuffer(),  //  Input
-            buffer3 = vectorB.GetBuffer();  //  Input
-
-        kernelWithStream(gpu.accelerator.DefaultStream, vectorA.Columns, buffer.View, buffer2.View, buffer3.View, vectorA.Columns, vectorA.Length / vectorA.Columns);
-
-        gpu.accelerator.Synchronize();
-
-        vectorA.DecrementLiveCount();
-        vectorB.DecrementLiveCount();
-        output.DecrementLiveCount();
+        using (GpuScope.Begin(output, vectorA, vectorB))
+        {
+            _kernels.MultiplySumAxZero(
+                gpu.accelerator.DefaultStream,
+                columns,
+                output.GetBuffer().View,
+                vectorA.GetBuffer().View,
+                vectorB.GetBuffer().View,
+                columns,
+                rows);
+            gpu.accelerator.Synchronize();
+        }
 
         return output;
     }
-    static void MultiplySumAxZeroKernel(Index1D index, ArrayView<float> Output, ArrayView<float> InputA, ArrayView<float> InputB, int columns, int rows)
-    {
-        for (int i = 0; i < rows; i++)
-        {
-            Output[index] += InputA[i * columns + index] * InputB[i * columns + index];
-        }
 
+    static void MultiplySumAxZeroKernel(Index1D index, ArrayView<float> output, ArrayView<float> inputA, ArrayView<float> inputB, int columns, int rows)
+    {
+        float sum = 0f;
+        for (int i = 0; i < rows; i++)
+            sum += inputA[i * columns + index] * inputB[i * columns + index];
+        output[index] = sum;
     }
 
-    private Vector Create_a(float[] y)
+    private Vector Create_a(ReadOnlySpan<float> y)
     {
         List<float> a = new();
-
         for (int i = 0; i < m; i++)
         {
             a.AddRange(new float[p]);
-            float[] yrange = y[i..(n - m + i + 1)];
-            a.AddRange(yrange);
+            for (int j = 0; j < n - m + 1; j++)
+                a.Add(y[i + j]);
             a.AddRange(new float[p]);
         }
-
         return new Vector(gpu, a.ToArray(), kernel.Columns);
     }
 
-    private Vector kernCalculation(GPU gpu, Vector x2, Vector sigma)
+    private Vector kernCalculation(GPU gpu, Vector x2, Vector sigmaVec)
     {
+        int stride = sigmaVec.Columns > 1 ? sigmaVec.Columns : sigmaVec.Length;
+        int kernelWidth = x2.Length;
+        Vector output = new(gpu, new float[kernelWidth * stride], stride);
 
-        x2.IncrementLiveCount();
-        sigma.IncrementLiveCount();
-
-        Vector output = new(gpu, new float[x2.Length * sigma.Length], sigma.Length);
-        output.IncrementLiveCount();
-
-
-        var buffer = output.GetBuffer();    // OUTPUT
-        var buffer2 = x2.GetBuffer();       // INPUT
-        var buffer3 = sigma.GetBuffer();    // INPUT
-
-        var kernelWithStream = gpu.accelerator.LoadAutoGroupedKernel<Index1D, ArrayView<float>, ArrayView<float>, ArrayView<float>>(kernCalcKERNEL);
-        kernelWithStream(gpu.accelerator.DefaultStream, buffer3.IntExtent, buffer.View, buffer2.View, buffer3.View);
-
-        gpu.accelerator.Synchronize();
-
-        x2.DecrementLiveCount();
-        sigma.DecrementLiveCount();
-        output.DecrementLiveCount();
+        using (GpuScope.Begin(output, x2, sigmaVec))
+        {
+            _kernels.KernCalc(
+                gpu.accelerator.DefaultStream,
+                stride,
+                output.GetBuffer().View,
+                x2.GetBuffer().View,
+                sigmaVec.GetBuffer().View,
+                kernelWidth,
+                stride);
+            gpu.accelerator.Synchronize();
+        }
 
         return output;
     }
 
-    static void kernCalcKERNEL(Index1D index, ArrayView<float> output, ArrayView<float> x2, ArrayView<float> sig)
+    static void KernCalcKernel(Index1D index, ArrayView<float> output, ArrayView<float> x2, ArrayView<float> sig, int kernelWidth, int stride)
     {
-
-        //output[index] = XMath.Exp(x2[XMath.DivRoundDown(index, len)] * 0.5f / XMath.Pow(sig[index % len], 2f));
-        //ArrayView<float> partialoutput2 = new ArrayView<float>(x2.Length);
         float sum = 0f;
-        int indx = 0;
-
-        for (int i = 0; i < x2.Length; i++)
+        for (int i = 0; i < kernelWidth; i++)
         {
-            indx = index + sig.IntLength * i;
-
+            int indx = index + stride * i;
             output[indx] = XMath.Exp((-x2[i] * 0.5f) / XMath.Pow(sig[index], 2f));
-            //partialoutput[i] = XMath.Exp((-x2[i] * 0.5f) / XMath.Pow(sig[index], 2f));
             sum += output[indx];
         }
 
-        sum = 1f / sum; // reciprocal of the sum
-
-        for (int i = 0; i < x2.Length; i++)
+        sum = 1f / sum;
+        for (int i = 0; i < kernelWidth; i++)
         {
-            indx = index + sig.IntExtent * i;
-            //output[(int)(index + sig.Length * i)] = partialoutput[i] / sum;
-
+            int indx = index + stride * i;
             output[indx] *= sum;
         }
-
     }
-
-
-
 }

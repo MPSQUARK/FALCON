@@ -3,6 +3,10 @@
 ##
 ## Get latest from https://github.com/github/gitignore/blob/master/VisualStudio.gitignore
 
+# Python virtual environments
+.venv/
+venv/
+
 # User-specific files
 *.rsuser
 *.suo
@@ -341,5 +345,5 @@ healthchecksdb
 /output/
 Log.txt
 assets/**/*.h5
-assets/stellar-population-models/**
-assets/dust-maps/**
+assets/stellar-population-models/*.h5
+assets/dust-maps/*.h5

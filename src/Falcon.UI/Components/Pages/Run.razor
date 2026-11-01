@@ -1,43 +1,442 @@
 @page "/run"
 @rendermode InteractiveServer
-@using BAVCL
 @using Falcon.Core.Abstractions
-@using Falcon.Core.Configuration
-@using Falcon.Core.DependencyInjection
-@inject ISpectralFitPipeline Pipeline
-@inject GPU Gpu
+@using Falcon.UI.Services
+@inject FalconAnalysisService Analysis
+@inject RunStatusSink RunStatus
+@implements IDisposable
 
-<PageTitle>Run</PageTitle>
+<PageTitle>Run — FALCON</PageTitle>
 
-<h2>Run Analysis</h2>
-<input @bind="ConfigPath" style="width:100%;max-width:600px" />
-<button @onclick="RunBatch" disabled="@Running">@(Running ? "Running..." : "Run batch")</button>
-<p>@Status</p>
+<PageHeader Title="Run analysis"
+            Subtitle="Select spectra from your config path, add more via drag-and-drop, then launch fits.">
+    <div class="gpu-status @(GpuStatus.Ready ? "gpu-status-ready" : "gpu-status-error")" role="status" aria-live="polite">
+        <span class="gpu-status-dot" aria-hidden="true"></span>
+        <span class="gpu-status-label">@(GpuStatus.Ready ? "GPU ready" : "GPU unavailable")</span>
+        <span class="gpu-status-detail">@GpuStatus.Message</span>
+    </div>
+</PageHeader>
+
+<div class="falcon-card">
+    <div class="card-header">
+        <div>
+            <h2>Configuration</h2>
+            <p>YAML file defining input path, models, and fitting options</p>
+        </div>
+    </div>
+    <div class="card-body">
+        <div class="falcon-field">
+            <label class="falcon-label" for="config-path">Config file</label>
+            <div class="drop-zone @(ConfigDragOver ? "drop-zone-active" : "")"
+                 @ondragenter="() => ConfigDragOver = true"
+                 @ondragleave="() => ConfigDragOver = false">
+                <InputFile OnChange="OnConfigFileSelected" accept=".yaml,.yml" class="drop-zone-input" />
+                <input id="config-path"
+                       class="falcon-input falcon-input-mono"
+                       @bind="ConfigPath"
+                       @bind:event="oninput"
+                       @onblur="OnConfigPathChanged"
+                       placeholder="configs/example.yaml" />
+                <p class="drop-hint">Drag a <code>.yaml</code> here, type a path, or click to browse</p>
+            </div>
+        </div>
+
+        @if (!string.IsNullOrEmpty(ListError))
+        {
+            <div class="falcon-alert falcon-alert-error" role="alert">@ListError</div>
+        }
+        else if (LoadingList)
+        {
+            <p class="list-loading-hint">Loading spectra…</p>
+        }
+    </div>
+</div>
+
+@if (Spectra.Count > 0)
+{
+    <div class="falcon-card">
+        <div class="card-header">
+            <div>
+                <h2>Select spectra</h2>
+                <p>@SelectedCount of @Spectra.Count selected</p>
+            </div>
+            <div class="falcon-btn-group">
+                <button type="button" class="falcon-btn falcon-btn-ghost falcon-btn-sm" @onclick="SelectAll" disabled="@Running">Select all</button>
+                <button type="button" class="falcon-btn falcon-btn-ghost falcon-btn-sm" @onclick="SelectNone" disabled="@Running">Clear</button>
+                <button type="button" class="falcon-btn falcon-btn-accent" @onclick="RunSelected" disabled="@(Running || SelectedCount == 0)">
+                    @(Running ? "Running…" : $"Run selected ({SelectedCount})")
+                </button>
+            </div>
+        </div>
+        <div class="card-body card-body-flush">
+            <div class="drop-zone drop-zone-compact @(SpectraDragOver ? "drop-zone-active" : "")"
+                 @ondragenter="() => SpectraDragOver = true"
+                 @ondragleave="() => SpectraDragOver = false">
+                <InputFile OnChange="OnSpectraFileSelected" accept=".fits,.dat" multiple class="drop-zone-input" />
+                <p class="drop-hint">Drop <code>.fits</code> files here or click to add (unique by file name)</p>
+            </div>
+            <div class="falcon-table-wrap">
+                <table class="falcon-table">
+                    <thead>
+                        <tr>
+                            <th style="width:2.5rem"></th>
+                            <th>Spectrum</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var row in Spectra)
+                        {
+                            <tr class="@RowClass(row)">
+                                <td>
+                                    <input type="checkbox" class="falcon-checkbox"
+                                           checked="@row.Selected"
+                                           @onchange="e => ToggleRow(row, e)"
+                                           disabled="@Running"
+                                           aria-label="Select @row.Entry.FileName" />
+                                </td>
+                                <td><span class="file-name">@row.Entry.FileName</span></td>
+                                <td>
+                                    @if (row.RunState == SpectrumRunState.Running)
+                                    {
+                                        <span class="status-running">
+                                            <span class="spinner" aria-hidden="true"></span>
+                                            In progress
+                                        </span>
+                                    }
+                                    else if (row.RunState == SpectrumRunState.Failed)
+                                    {
+                                        <span class="falcon-badge falcon-badge-error">@(row.Error ?? "Failed")</span>
+                                    }
+                                    else if (row.Summary is { } summary)
+                                    {
+                                        <div class="fit-props">
+                                            <span class="falcon-badge falcon-badge-success">Done</span>
+                                            <span class="fit-props-detail">@FormatSummary(summary)</span>
+                                        </div>
+                                    }
+                                    else if (row.Entry.HasExistingResults)
+                                    {
+                                        <span class="falcon-badge falcon-badge-success">Has results</span>
+                                    }
+                                    else if (row.RunState == SpectrumRunState.Complete)
+                                    {
+                                        <span class="falcon-badge falcon-badge-muted">Done (no JSON)</span>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+}
+else if (!LoadingList && !string.IsNullOrEmpty(ConfigPath) && string.IsNullOrEmpty(ListError))
+{
+    <div class="falcon-alert falcon-alert-info">
+        No spectra found for this config — check the input path, or drop FITS files above.
+    </div>
+}
+
+@if (Running || !string.IsNullOrEmpty(RunStatus.LastMessage))
+{
+    <div class="falcon-card">
+        <div class="card-header">
+            <h2>@RunLogTitle</h2>
+        </div>
+        <div class="card-body">
+            <pre class="run-log mono">@RunStatus.LastMessage</pre>
+        </div>
+    </div>
+}
+
+@if (!string.IsNullOrEmpty(Status) && !Running)
+{
+    <div class="falcon-alert @(Status.StartsWith("Error") ? "falcon-alert-error" : "falcon-alert-success")" role="status">
+        @Status
+    </div>
+}
+
+@if (LastSummary is not null)
+{
+    <div class="falcon-card">
+        <div class="card-header">
+            <div>
+                <h2>Latest results</h2>
+                <p>@LastSummary.ResultFiles.Count file(s) written to output/</p>
+            </div>
+        </div>
+        <div class="card-body card-body-flush">
+            <table class="falcon-table">
+                <thead>
+                    <tr><th>Results file</th><th></th></tr>
+                </thead>
+                <tbody>
+                    @foreach (var f in LastSummary.ResultFiles)
+                    {
+                        <tr>
+                            <td><span class="file-name">@Path.GetFileName(f)</span></td>
+                            <td><a href="@PlotLink(f)">View plot &amp; properties →</a></td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+}
 
 @code {
     string ConfigPath { get; set; } = "configs/example.yaml";
     string Status { get; set; } = "";
+    string ListError { get; set; } = "";
     bool Running { get; set; }
+    bool LoadingList { get; set; }
+    bool ConfigDragOver { get; set; }
+    bool SpectraDragOver { get; set; }
+    int RunningFitCount { get; set; }
+    RunSummary? LastSummary { get; set; }
+    List<SpectrumRow> Spectra { get; set; } = [];
+    GpuStatus GpuStatus { get; set; } = new(false, "Checking…");
+    readonly HashSet<string> _extraSpectrumPaths = new(StringComparer.OrdinalIgnoreCase);
+    CancellationTokenSource? _batchCts;
 
-    async Task RunBatch()
+    int SelectedCount => Spectra.Count(s => s.Selected);
+
+    string RunLogTitle => Running
+        ? $"Run log (Running {RunningFitCount} fit{(RunningFitCount == 1 ? "" : "s")})"
+        : "Run log";
+
+    protected override void OnInitialized()
     {
-        Running = true;
-        Status = "Initialising...";
+        RunStatus.Changed += OnRunStatusChanged;
+        GpuStatus = Analysis.GetGpuStatus();
+    }
+
+    public void Dispose()
+    {
+        _batchCts?.Cancel();
+        _batchCts?.Dispose();
+        RunStatus.Changed -= OnRunStatusChanged;
+    }
+
+    void OnRunStatusChanged() => InvokeAsync(StateHasChanged);
+
+    protected override async Task OnInitializedAsync() => await LoadSpectra(clearRunState: false);
+
+    async Task OnConfigPathChanged() => await LoadSpectra();
+
+    async Task LoadSpectra(bool clearRunState = true)
+    {
+        LoadingList = true;
+        ListError = "";
+        if (clearRunState)
+        {
+            Status = "";
+            LastSummary = null;
+        }
         await Task.Yield();
         try
         {
-            var path = Path.IsPathRooted(ConfigPath) ? ConfigPath : Path.Combine(AppContext.BaseDirectory, ConfigPath);
-            var opts = YamlConfigurationExtensions.LoadFireflyYaml(path);
-            ServiceCollectionExtensions.InitializeGpuData(Gpu, opts, AppContext.BaseDirectory);
-            var inputDir = Path.Combine(AppContext.BaseDirectory, opts.Input.SpectrumPath);
-            var files = Directory.GetFiles(inputDir, opts.Input.InputGlob, SearchOption.AllDirectories);
-            Pipeline.FitBatch(files);
-            Status = $"Completed {files.Length} spectra.";
+            var previous = Spectra
+                .Where(s => s.Selected)
+                .Select(s => s.Entry.FullPath)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+            var previousState = Spectra.ToDictionary(
+                s => s.Entry.FullPath,
+                s => s,
+                StringComparer.OrdinalIgnoreCase);
+
+            var entries = Analysis.ListSpectra(ConfigPath, _extraSpectrumPaths);
+            Spectra = entries
+                .Select(e =>
+                {
+                    if (previousState.TryGetValue(e.FullPath, out var existing))
+                        return new SpectrumRow(e, existing.Selected, existing.RunState, existing.Summary, existing.Error);
+                    return new SpectrumRow(e, previous.Contains(e.FullPath));
+                })
+                .ToList();
+
+            foreach (var row in Spectra.Where(r => r.Entry.HasExistingResults && r.Summary is null))
+                row.Summary = Analysis.LoadResultSummary(row.Entry.ResultsPath);
+
+            if (Spectra.Count == 0)
+                ListError = "No spectra found for this config.";
         }
         catch (Exception ex)
         {
-            Status = ex.Message;
+            Spectra = [];
+            ListError = ex.Message;
+        }
+        LoadingList = false;
+    }
+
+    void SelectAll()
+    {
+        foreach (var row in Spectra) row.Selected = true;
+    }
+
+    void SelectNone()
+    {
+        foreach (var row in Spectra) row.Selected = false;
+    }
+
+    void ToggleRow(SpectrumRow row, ChangeEventArgs e)
+    {
+        row.Selected = e.Value is true;
+    }
+
+    async Task RunSelected()
+    {
+        var selected = Spectra.Where(s => s.Selected).Select(s => s.Entry.FullPath).ToList();
+        if (selected.Count == 0) return;
+
+        Running = true;
+        RunningFitCount = selected.Count;
+        Status = "";
+        foreach (var row in Spectra.Where(r => r.Selected))
+        {
+            row.RunState = SpectrumRunState.Running;
+            row.Summary = null;
+            row.Error = null;
+        }
+        StateHasChanged();
+
+        var progress = new Progress<BatchProgress>(p =>
+        {
+            var row = Spectra.FirstOrDefault(s =>
+                string.Equals(s.Entry.FullPath, p.CurrentFile, StringComparison.OrdinalIgnoreCase));
+            if (row is null) return;
+
+            row.RunState = p.Phase switch
+            {
+                BatchPhase.Running => SpectrumRunState.Running,
+                BatchPhase.Complete => SpectrumRunState.Complete,
+                BatchPhase.Failed => SpectrumRunState.Failed,
+                _ => row.RunState
+            };
+            row.Error = p.Error;
+
+            if (p.Phase == BatchPhase.Complete)
+                row.Summary = Analysis.LoadResultSummary(row.Entry.ResultsPath);
+
+            InvokeAsync(StateHasChanged);
+        });
+
+        _batchCts?.Cancel();
+        _batchCts?.Dispose();
+        _batchCts = new CancellationTokenSource();
+
+        try
+        {
+            LastSummary = await Analysis.RunBatchAsync(ConfigPath, selected, progress, _batchCts.Token);
+            if (LastSummary.ResultFiles.Count == 0)
+                Status = $"Finished {LastSummary.SpectraProcessed} spectrum(s) but no .results.json files were written — check the run log.";
+            else
+                Status = $"Finished {LastSummary.ResultFiles.Count} of {LastSummary.SpectraProcessed} spectrum(s); results in output/.";
+            await LoadSpectra(clearRunState: false);
+        }
+        catch (OperationCanceledException)
+        {
+            Status = "Run cancelled.";
+            LastSummary = null;
+        }
+        catch (Exception ex)
+        {
+            Status = $"Error: {ex.Message}";
+            LastSummary = null;
         }
         Running = false;
+        RunningFitCount = 0;
+        _batchCts?.Dispose();
+        _batchCts = null;
+    }
+
+    async Task OnConfigFileSelected(InputFileChangeEventArgs e)
+    {
+        var file = e.File;
+        if (file is null || !FalconAnalysisService.IsYamlPath(file.Name)) return;
+        var dest = Path.Combine(Path.GetTempPath(), "falcon-config-" + file.Name);
+        await using var stream = file.OpenReadStream(512_000);
+        await using var fs = File.Create(dest);
+        await stream.CopyToAsync(fs);
+        ConfigPath = dest;
+        await LoadSpectra();
+    }
+
+    async Task OnSpectraFileSelected(InputFileChangeEventArgs e)
+    {
+        foreach (var file in e.GetMultipleFiles(50))
+        {
+            if (!FalconAnalysisService.IsSpectrumPath(file.Name)) continue;
+            var dest = Path.Combine(Path.GetTempPath(), "falcon-spectra-" + file.Name);
+            await using var stream = file.OpenReadStream(50_000_000);
+            await using var fs = File.Create(dest);
+            await stream.CopyToAsync(fs);
+            AddSpectrumPath(dest);
+        }
+        await LoadSpectra(clearRunState: false);
+    }
+
+    void AddSpectrumPath(string fullPath)
+    {
+        string normalized = Path.GetFullPath(fullPath);
+        _extraSpectrumPaths.Add(normalized);
+
+        string fileName = Path.GetFileName(normalized);
+        int existingIdx = Spectra.FindIndex(s =>
+            string.Equals(s.Entry.FileName, fileName, StringComparison.OrdinalIgnoreCase));
+        if (existingIdx >= 0)
+            Spectra.RemoveAt(existingIdx);
+
+        string baseName = Path.GetFileNameWithoutExtension(normalized);
+        string resultsPath = Path.Combine(Analysis.OutputDirectory, baseName + ".results.json");
+        var entry = new SpectrumEntry(normalized, fileName, File.Exists(resultsPath), resultsPath);
+        Spectra.Add(new SpectrumRow(entry, selected: true));
+        Spectra.Sort((a, b) => string.Compare(a.Entry.FileName, b.Entry.FileName, StringComparison.OrdinalIgnoreCase));
+    }
+
+    static string PlotLink(string resultsPath) =>
+        "/plots?file=" + Uri.EscapeDataString(Path.GetFileName(resultsPath));
+
+    static string RowClass(SpectrumRow row) =>
+        row.RunState switch
+        {
+            SpectrumRunState.Running => "row-running",
+            SpectrumRunState.Failed => "row-failed",
+            _ => ""
+        };
+
+    static string FormatSummary(FitResultSummary s)
+    {
+        double age = s.PdfLightAgeGyr > 0 ? s.PdfLightAgeGyr : s.TopLightAgeGyr;
+        double metal = Math.Abs(s.PdfLightMetal) > 1e-6 ? s.PdfLightMetal : (
+            s.TopLightMetal > 0 ? Math.Log10(s.TopLightMetal) : double.NaN);
+        string metalText = double.IsNaN(metal) ? "—" : metal.ToString("F2");
+        string chiText = s.ChiSquaredPerDof > 0 ? s.ChiSquaredPerDof.ToString("F1") : "—";
+        string probText = s.Probability > 0 ? s.Probability.ToString("P1") : "—";
+        return $"Age {age:F2} Gyr · [Z/H] {metalText} · χ²/ν {chiText} · P {probText}";
+    }
+
+    enum SpectrumRunState { Idle, Pending, Running, Complete, Failed }
+
+    sealed class SpectrumRow
+    {
+        public SpectrumRow(SpectrumEntry entry, bool selected, SpectrumRunState runState = SpectrumRunState.Idle,
+            FitResultSummary? summary = null, string? error = null)
+        {
+            Entry = entry;
+            Selected = selected;
+            RunState = runState;
+            Summary = summary;
+            Error = error;
+        }
+
+        public SpectrumEntry Entry { get; }
+        public bool Selected { get; set; }
+        public SpectrumRunState RunState { get; set; }
+        public FitResultSummary? Summary { get; set; }
+        public string? Error { get; set; }
     }
 }

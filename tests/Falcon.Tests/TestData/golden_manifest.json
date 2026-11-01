@@ -1,5 +1,12 @@
 {
-  "description": "Placeholder golden reference — replace with Python firefly outputs for strict parity tests",
-  "tolerance_rtol": 1e-5,
-  "spectrum": "example_data/spec-0266-51602-0001.dat"
+  "description": "Golden reference fixtures for FALCON unit tests",
+  "tolerance_rtol": 1E-05,
+  "files": [
+    "golden_bisect.json",
+    "golden_normalise.json",
+    "golden_match_data_models.json",
+    "golden_hpf.json",
+    "golden_fitter.json",
+    "golden_thesis_firefly.json"
+  ]
 }

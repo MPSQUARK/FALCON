@@ -16,13 +16,13 @@ public static class FireflyConstants
         { "Ne-V" , new float[2] { 3345.81f, 3425.81f } },
         { "O-II" , new float[2] { 3726.03f, 3728.73f } },
         { "Ne-III" , new float[2] { 3868.69f, 3967.40f } },
-        { "H-?" , new float[1] { 3889.05f } },
+        { "H-zeta" , new float[1] { 3889.05f } },
         { "H-e" , new float[1] { 3970.07f } },
         { "H-d" , new float[1] { 4101.73f } },
-        { "H-?" , new float[1] { 4340.46f } },
+        { "H-gamma" , new float[1] { 4340.46f } },
         { "O-III" , new float[3] { 4363.15f, 4958.83f, 5006.77f } },           
         { "Ar-IV" , new float[2] { 4711.30f, 4740.10f } },
-        { "H-ß" , new float[1] { 4861.32f } },
+        { "H-ï¿½" , new float[1] { 4861.32f } },
         { "N-I" , new float[2] { 5197.90f, 5200.39f } },
         { "He-I" , new float[1] { 5875.60f } },
         { "O-I" , new float[2] { 6300.20f, 6363.67f } },
@@ -99,6 +99,8 @@ public static class FireflyConstants
     public static float[] Z { get; set; }
     public static float[] s { get; set; }
     public static Vector wavelength { get; set; }
+    /// <summary>CPU copy of MaStar wavelength grid (GPU vector may be invalidated during downgrade).</summary>
+    public static float[] wavelengthCpu { get; set; } = [];
     public static float[,,,] fluxgrid { get; set; } // Line 326-329 - firefly models
 
 

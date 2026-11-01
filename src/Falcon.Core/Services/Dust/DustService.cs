@@ -1,57 +1,19 @@
-using System.Numerics;
+using BAVCL;
 using Falcon.Core.Abstractions;
+using Falcon.Core.Diagnostics;
+using Falcon.Core.Numerics;
 using Falcon.Core.Services.Statistics;
+using MathNet.Numerics;
+using MathNet.Numerics.Interpolation;
 
 namespace Falcon.Core.Services.Dust;
 
-public sealed class DustService : IDustService
+public sealed class DustService(GPU gpu) : IDustService
 {
-    public double[] Hpf(ReadOnlySpan<double> flux, int windowSize = 20, int wStart = 20)
-    {
-        int d = flux.Length;
-        if (wStart == 0 && windowSize == 0) wStart = Math.Max(1, d / 100);
+    readonly GPU _gpu = gpu;
 
-        var h = FftForward(flux.ToArray());
-        var window = new double[d];
-        var unwindow = new double[d];
-        window[0] = 1;
-        unwindow[0] = 1;
-
-        if (windowSize > 0)
-        {
-            double dw = windowSize;
-            for (int i = 0; i < windowSize; i++)
-            {
-                window[wStart + i] = (i + 1.0) / dw;
-                window[d - 1 - (wStart + windowSize - i)] = (dw - i) / dw;
-            }
-            for (int i = wStart + windowSize; i < d - (wStart + windowSize); i++)
-                window[i] = 1;
-        }
-        else
-        {
-            for (int i = wStart; i < d - wStart; i++) window[i] = 1;
-        }
-
-        for (int i = 0; i < d; i++) unwindow[i] = 1 - window[i];
-        unwindow[0] = 1;
-
-        var hFiltered = new Complex[d];
-        var unHFiltered = new Complex[d];
-        for (int i = 0; i < d; i++)
-        {
-            hFiltered[i] = h[i] * window[i];
-            unHFiltered[i] = h[i] * unwindow[i];
-        }
-
-        var res = FftInverseReal(hFiltered);
-        var unres = FftInverseReal(unHFiltered);
-        double medRes = Median(res);
-        var output = new double[d];
-        for (int i = 0; i < d; i++)
-            output[i] = (1.0 + (res[i] - medRes) / (unres[i] == 0 ? 1e-30 : unres[i])) * medRes;
-        return output;
-    }
+    public double[] Hpf(ReadOnlySpan<double> flux, int windowSize = 20, int wStart = 20) =>
+        GpuFftService.Hpf(_gpu, flux, windowSize, wStart);
 
     public double[] Unred(ReadOnlySpan<double> wavelengthAngstrom, double ebv, string law = "calzetti")
     {
@@ -62,6 +24,91 @@ public sealed class DustService : IDustService
             "prevot" => DustPrevot(ebv, wave),
             _ => DustCalzetti(ebv, wave)
         };
+    }
+
+    /// <inheritdoc />
+    public double[] FitzpatrickUnred(ReadOnlySpan<double> wavelengthAngstrom, double ebv, double rV = 3.1)
+    {
+        var wave = wavelengthAngstrom.ToArray();
+        int n = wave.Length;
+        var x = new double[n];
+        for (int i = 0; i < n; i++)
+            x[i] = 10000.0 / wave[i];
+
+        double x0 = 4.596;
+        double gamma = 0.99;
+        double c3 = 3.23;
+        double c4 = 0.41;
+        double c2 = -0.824 + 4.717 / rV;
+        double c1 = 2.030 - 3.007 * c2;
+
+        double xcutuv = 10000.0 / 2700.0;
+        double[] xspluv = [10000.0 / 2700.0, 10000.0 / 2600.0];
+
+        var curve = new double[n];
+        var xuvList = new List<double>(xspluv);
+        var yuvList = new List<double>();
+
+        foreach (double xv in xspluv)
+            yuvList.Add(FitzpatrickY(xv, x0, gamma, c3, c4, c1, c2, rV));
+
+        for (int i = 0; i < n; i++)
+        {
+            if (x[i] >= xcutuv)
+            {
+                xuvList.Add(x[i]);
+                yuvList.Add(FitzpatrickY(x[i], x0, gamma, c3, c4, c1, c2, rV));
+                curve[i] = yuvList[^1];
+            }
+        }
+
+        double[] xsplopir =
+        [
+            0,
+            10000.0 / 26500.0, 10000.0 / 12200.0, 10000.0 / 6000.0,
+            10000.0 / 5470.0, 10000.0 / 4670.0, 10000.0 / 4110.0,
+            xspluv[0], xspluv[1]
+        ];
+        double[] ysplir = [0.0, 0.26469, 0.82925];
+        for (int i = 0; i < ysplir.Length; i++)
+            ysplir[i] *= rV / 3.1;
+        double[] ysplop =
+        [
+            PolyVal([2.13572e-04, 1.00270, -4.22809e-01], rV),
+            PolyVal([-7.35778e-05, 1.00216, -5.13540e-02], rV),
+            PolyVal([-3.32598e-05, 1.00184, 7.00127e-01], rV),
+            PolyVal([-4.45636e-05, 7.97809e-04, -5.46959e-03, 1.01707, 1.19456], rV)
+        ];
+        var ysplopir = ysplir.Concat(ysplop).Concat(yuvList.Take(2)).ToArray();
+        var spline = CubicSpline.InterpolateNaturalSorted(xsplopir, ysplopir);
+
+        for (int i = 0; i < n; i++)
+        {
+            if (x[i] < xcutuv)
+                curve[i] = spline.Interpolate(x[i]);
+        }
+
+        var atten = new double[n];
+        for (int i = 0; i < n; i++)
+            atten[i] = Math.Pow(10, 0.4 * curve[i] * ebv);
+        return atten;
+    }
+
+    static double FitzpatrickY(double xv, double x0, double gamma, double c3, double c4, double c1, double c2, double rV)
+    {
+        double y = c1 + c2 * xv;
+        y += c3 * xv * xv / (Math.Pow(xv * xv - x0 * x0, 2) + Math.Pow(xv * gamma, 2));
+        double bump = Math.Max(xv, 5.9) - 5.9;
+        y += c4 * (0.5392 * bump * bump + 0.05644 * bump * bump * bump);
+        return y + rV;
+    }
+
+    static double PolyVal(double[] coeffsHighToLow, double x)
+    {
+        double y = 0;
+        foreach (double c in coeffsHighToLow)
+            y = y * x + c;
+        return y;
     }
 
     public double GetSfdEbv(double longitudeDeg, double latitudeDeg, float[,] ngp, float[,] sgp)
@@ -82,10 +129,10 @@ public sealed class DustService : IDustService
 
     public DustAttenuationResult DetermineAttenuation(DustAttenuationInput input, ISpectralFitter fitter)
     {
+        using var _ = FitTrace.BeginSpan("dust_fit");
         var hpfData = Hpf(input.DataFlux);
         int nModels = input.ModelFlux.Length;
-        var hpfModels = new double[nModels][];
-        for (int m = 0; m < nModels; m++) hpfModels[m] = Hpf(input.ModelFlux[m]);
+        var hpfModels = HpfModelsBatch(input.ModelFlux);
 
         for (int i = 0; i < hpfData.Length; i++)
             if (double.IsNaN(hpfData[i]) || double.IsInfinity(hpfData[i])) hpfData[i] = 0;
@@ -163,28 +210,44 @@ public sealed class DustService : IDustService
         int len = models[0].Length;
         var result = new double[len];
         for (int m = 0; m < weights.Length; m++)
-            for (int i = 0; i < len; i++)
-                result[i] += weights[m] * models[m][i];
+            SimdSpanOps.BlendWeightedAccumulate(result, weights[m], models[m]);
         return result;
     }
 
-    private static double Dot(double[] w, double[] v)
+    private static double Dot(double[] w, double[] v) => SimdSpanOps.Dot(w, v);
+
+    double[][] HpfModelsBatch(double[][] models)
     {
-        double s = 0;
-        for (int i = 0; i < w.Length; i++) s += w[i] * v[i];
-        return s;
+        var hpfModels = new double[models.Length][];
+        for (int m = 0; m < models.Length; m++)
+            hpfModels[m] = Hpf(models[m]);
+        return hpfModels;
     }
 
     private static double[] CurveSmoother(double[] x, double[] y, float smoothingLength)
     {
         var yOut = new double[y.Length];
+        var scratch = new double[y.Length];
+        int lo = 0;
+        int hi = 0;
         for (int w = 0; w < x.Length; w++)
         {
-            var vals = new List<double>();
-            for (int i = 0; i < x.Length; i++)
-                if (x[i] < x[w] + smoothingLength && x[i] > x[w] - smoothingLength)
-                    vals.Add(y[i]);
-            yOut[w] = vals.Count > 0 ? Median(vals) : y[w];
+            double left = x[w] - smoothingLength;
+            double right = x[w] + smoothingLength;
+            while (lo < x.Length && x[lo] < left) lo++;
+            hi = Math.Max(hi, lo);
+            while (hi < x.Length && x[hi] <= right) hi++;
+            int count = hi - lo;
+            if (count <= 0)
+            {
+                yOut[w] = y[w];
+                continue;
+            }
+            Array.Copy(y, lo, scratch, 0, count);
+            Array.Sort(scratch, 0, count);
+            yOut[w] = count % 2 == 0
+                ? (scratch[count / 2 - 1] + scratch[count / 2]) / 2
+                : scratch[count / 2];
         }
         return yOut;
     }
@@ -204,11 +267,30 @@ public sealed class DustService : IDustService
 
     private static double[] DustAllen(double ebv, double[] lam)
     {
-        // Simplified Allen 1976 MW curve via Calzetti fallback coefficients for parity scaffolding
-        return DustCalzetti(ebv * 1.1, lam);
+        double[] wave = [1000, 1110, 1250, 1430, 1670, 2000, 2220, 2500, 2860, 3330, 3650, 4000, 4400, 5000, 5530, 6700, 9000, 10000];
+        double[] allenK = [4.20, 3.70, 3.30, 3.00, 2.70, 2.80, 2.90, 2.30, 1.97, 1.69, 1.58, 1.45, 1.32, 1.13, 1.00, 0.74, 0.46, 0.38];
+        for (int i = 0; i < allenK.Length; i++) allenK[i] *= 3.1;
+        return lam.Select(l => Math.Pow(10, -0.4 * ebv * InterpolateTable(wave, allenK, l))).ToArray();
     }
 
-    private static double[] DustPrevot(double ebv, double[] lam) => DustCalzetti(ebv * 0.9, lam);
+    private static double[] DustPrevot(double ebv, double[] lam)
+    {
+        double[] wave = [1275, 1330, 1385, 1435, 1490, 1545, 1595, 1647, 1700, 1755, 1810, 1860, 1910, 2000, 2115, 2220, 2335, 2445, 2550, 2665, 2778, 2890, 2995, 3105, 3704, 4255, 5291, 10000];
+        double[] prevotK = [13.54, 12.52, 11.51, 10.80, 9.84, 9.28, 9.06, 8.49, 8.01, 7.71, 7.17, 6.90, 6.76, 6.38, 5.85, 5.30, 4.53, 4.24, 3.91, 3.49, 3.15, 3.00, 2.65, 2.29, 1.81, 1.00, 0.74, 0.00];
+        for (int i = 0; i < prevotK.Length; i++) prevotK[i] *= 2.72;
+        return lam.Select(l => Math.Pow(10, -0.4 * ebv * InterpolateTable(wave, prevotK, l))).ToArray();
+    }
+
+    private static double InterpolateTable(double[] wave, double[] k, double lam)
+    {
+        if (lam <= wave[0]) return k[0];
+        if (lam >= wave[^1]) return k[^1];
+        int idx = Array.BinarySearch(wave, lam);
+        if (idx >= 0) return k[idx];
+        idx = ~idx;
+        double t = (lam - wave[idx - 1]) / (wave[idx] - wave[idx - 1]);
+        return k[idx - 1] * (1 - t) + k[idx] * t;
+    }
 
     private static double Median(ReadOnlySpan<double> data)
     {
@@ -220,51 +302,4 @@ public sealed class DustService : IDustService
 
     private static double Median(IEnumerable<double> data) => Median(data.ToArray());
 
-    private static Complex[] FftForward(double[] input)
-    {
-        int n = input.Length;
-        int pow2 = 1;
-        while (pow2 < n) pow2 <<= 1;
-        var padded = new Complex[pow2];
-        for (int i = 0; i < n; i++) padded[i] = new Complex(input[i], 0);
-        FftInPlace(padded, false);
-        return padded;
-    }
-
-    private static double[] FftInverseReal(Complex[] spectrum)
-    {
-        var copy = (Complex[])spectrum.Clone();
-        FftInPlace(copy, true);
-        return copy.Select(c => c.Real / copy.Length).ToArray();
-    }
-
-    private static void FftInPlace(Complex[] buffer, bool inverse)
-    {
-        int n = buffer.Length;
-        int j = 0;
-        for (int i = 1; i < n; i++)
-        {
-            int bit = n >> 1;
-            for (; (j & bit) != 0; bit >>= 1) j &= ~bit;
-            j |= bit;
-            if (i < j) (buffer[i], buffer[j]) = (buffer[j], buffer[i]);
-        }
-        for (int len = 2; len <= n; len <<= 1)
-        {
-            double ang = 2 * Math.PI / len * (inverse ? -1 : 1);
-            var wlen = new Complex(Math.Cos(ang), Math.Sin(ang));
-            for (int i = 0; i < n; i += len)
-            {
-                var w = Complex.One;
-                for (int k = 0; k < len / 2; k++)
-                {
-                    var u = buffer[i + k];
-                    var v = buffer[i + k + len / 2] * w;
-                    buffer[i + k] = u + v;
-                    buffer[i + k + len / 2] = u - v;
-                    w *= wlen;
-                }
-            }
-        }
-    }
 }

@@ -1,6 +1,4 @@
 using BAVCL;
-using nom.tam.fits;
-using nom.tam.util;
 
 
 using Falcon.Core.Constants;
@@ -28,38 +26,43 @@ public static class FitsSpectrumReader
 
     public static (Vector, Vector, Vector, float, float, float, float) ReadDataFits(GPU gpu, string path)
     {
+        SdssSpectrumFile file = FitsGeneratedReader.Read<SdssSpectrumFile>(path);
+        if (file.Spectrum.Rows.Count == 0)
+            throw new InvalidDataException("FITS spectrum table is empty.");
 
-        //string path = @"C:\Users\marce\source\repos\FALCON\Data\";
-        //string spec = "0266 -51630-0034";
-        Fits f = new(path);
-        BasicHDU hdu = f.GetHDU(2);
-        ColumnTable table = (ColumnTable)hdu.Data.DataArray;
-        float redshift = ((float[])table.GetColumn(63))[0];
-        float vdisp = ((float[])table.GetColumn(72))[0];
-
-        hdu = f.GetHDU(1);
-        table = (ColumnTable)hdu.Data.DataArray;
-
-        Vector wavelength = new Vector(gpu, (float[])table.GetColumn(1)).IPOP(10f, Operations.flipPow);
-
-        Vector flux = new(gpu, (float[])table.GetColumn(0));
-
-        Vector error = new Vector(gpu, (float[])table.GetColumn(2)).RsqrtXIP();
-
-
-        //Vector wavelength = Vector.TenToPowerVector(gpu, (float[])table.GetColumn(1));
-
-        //Vector flux = new Vector((float[])table.GetColumn(0), 1);
-
-        //Vector error = Vector.InvSqrt(gpu, (float[])table.GetColumn(2));
-
-
-        hdu = f.GetHDU(0);
-        float ra = hdu.Header.GetFloatValue("RA");
-        float dec = hdu.Header.GetFloatValue("DEC");
+        float redshift = ReadRedshift(file.SpecObj.Rows);
+        float vdisp = ReadVdisp(file.SpecObj.Rows);
+        float ra = (float)file.Primary.Ra;
+        float dec = (float)file.Primary.Dec;
+        float[] fluxValues = file.Spectrum.Rows.Select(row => row.Flux).ToArray();
+        float[] logWavelength = file.Spectrum.Rows.Select(row => row.LogWavelength).ToArray();
+        float[] inverseVariance = file.Spectrum.Rows.Select(row => row.InverseVariance).ToArray();
+        Vector wavelength = new Vector(gpu, logWavelength).IPOP(10f, Operations.flipPow);
+        Vector flux = new(gpu, fluxValues);
+        Vector error = new Vector(gpu, inverseVariance).RsqrtXIP();
 
         return (wavelength, flux, error, redshift, vdisp, ra, dec);
     }
+
+    static float ReadRedshift(IReadOnlyList<SdssSpecObjRow> rows)
+    {
+        if (rows.Count > 0)
+        {
+            SdssSpecObjRow row = rows[0];
+            if (IsValidRedshift(row.Redshift)) return row.Redshift;
+            if (IsValidRedshift(row.RedshiftNoQso)) return row.RedshiftNoQso;
+        }
+        throw new InvalidDataException("Could not determine redshift from SPECOBJ table.");
+    }
+
+    static float ReadVdisp(IReadOnlyList<SdssSpecObjRow> rows)
+    {
+        if (rows.Count > 0 && rows[0].VelocityDispersion > 0)
+            return rows[0].VelocityDispersion;
+        return 100f;
+    }
+
+    static bool IsValidRedshift(float z) => float.IsFinite(z) && z > 1e-6f;
 
     public static float Degree2Radians(float Deg)
     {

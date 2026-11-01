@@ -1,3 +1,4 @@
+using Falcon.Core.DependencyInjection;
 using Falcon.Core.Services.Dust;
 using Falcon.Core.Services.Statistics;
 using FluentAssertions;
@@ -9,11 +10,13 @@ public class DustAndStatisticsTests
     [Fact]
     public void Hpf_PreservesMedianScale()
     {
+        var gpu = FalconGpuHost.Create();
         var flux = Enumerable.Range(0, 128).Select(i => 1.0 + 0.01 * Math.Sin(i * 0.2)).ToArray();
-        var dust = new DustService();
+        var dust = new DustService(gpu);
         var hpf = dust.Hpf(flux);
         hpf.Length.Should().Be(flux.Length);
         hpf.Average().Should().BeApproximately(flux.Average(), 0.5);
+        gpu.Dispose();
     }
 
     [Fact]
@@ -31,7 +34,7 @@ public class DustAndStatisticsTests
     public void ConvertChisToProbs_SumsToOne()
     {
         var stats = new StatisticsService();
-        var probs = stats.ConvertChisToProbs(new[] { 10.0, 12.0, 15.0 });
+        var probs = stats.ConvertChisToProbs(new[] { 10.0, 12.0, 15.0 }, dof: 4);
         probs.Sum().Should().BeApproximately(1.0, 1e-9);
     }
 }

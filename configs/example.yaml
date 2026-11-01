@@ -14,15 +14,25 @@ model:
   library: MaStar-E
   imf: Kroupa
   age_min: 0
-  age_max: 14700000000
+  age_max: 14.7
   metallicity_min: -3
   metallicity_max: 3
   downgrade_models: true
   model_key: 18
 
 fitting:
+  engine: firefly
+  legacy_gpu_fallback: true
   max_iterations: 10
+  fit_per_iteration_cap: 1000
+  max_ssp_components: 5
+  use_gpu_evaluator: false
+  experimental_mix_search: false
+  experimental_mix_search_max_evals: 64
+  max_parallel_fits: 0  # 0 = Parallel.For over all spectra (master / BAVCL_Update default)
   pdf_sampling: 200
+  top_results_count: 3
+  wave_limits: [0, 99999990]
   max_ebv: 1.0
   num_dust_vals: 200
   dust_smoothing_length: 100

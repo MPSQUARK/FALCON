@@ -1,28 +1,35 @@
 # FALCON Roadmap
 
-## M0 — Documentation & foundation ✅
-Repo restructure, Falcon.Core/Cli/Tests/UI, BAVCL reference fix, DI + logging scaffold.
+## M0 — Documentation & foundation (done)
+Repo restructure, Falcon.Core/Cli/Tests/UI, BAVCL reference, DI + logging.
 
-## M1 — BAVCL modernisation & resolution service ✅
-Global BAVCL usings, Statistics kernel workload, `ResolutionService` in `Services/Instrument/`.
+## M1 — BAVCL modernisation & resolution service (done)
+Global BAVCL usings, `ResolutionService`, downgrade kernels.
 
-## M2 — Spectrum setup & YAML config ✅
-`FireflyOptions`, YAML loader, `LegacyConfig.ApplyFrom`, asset path updates.
+## M2 — Spectrum setup & YAML config (done)
+`FireflyOptions` with `engine`, `legacy_gpu_fallback`, `hpf_mode` (on/off/hpf_only), emission-line list.
 
-## M3 — Iterative fitter ✅
-`IterativeSpectralFitter` porting firefly tree expansion + BIC gate.
+## M3 — Iterative fitter (done)
+`IterativeSpectralFitter` as primary fit path via `FireflyFitOrchestrator`.
 
-## M4 — Dust, HPF, statistics, output 🔄
-`DustService`, `StatisticsService`, SFD dust wired; FITS output + full HPF integration in pipeline ongoing.
+## M4 — Dust, HPF, statistics, output (done)
+- Full `StatisticsMath` / `StatisticsService` PDF pipeline
+- `FireflyFitOrchestrator` wires match → normalise → dust → fit → stats
+- `FireflyFitsWriter` JSON/HIERARCH sidecar output
+- `GenerateInterpSSP` retained as `legacy_gpu` engine + fallback
 
-## M5 — CLI polish & batch ✅
-`Falcon.Cli` hosted entry, parallel batch via `SpectralFitRunner`.
+## M5 — CLI polish & batch (done)
+`Falcon.Cli` hosted entry, `SpectralFitRunner` with full DI.
 
-## M6 — Falcon.UI 🔄
-Blazor Web App scaffolded; wire config upload, run trigger, plot viewer.
+## M6 — Falcon.UI (scaffolded)
+Blazor Web App; config/run/plot pages stubbed.
 
-## M7 — MaNGA + SFR 🔄
-`MangaBatchReader`, `StarFormationRateService` stubs after core golden tests.
+## M7 — MaNGA + SFR (deferred)
+Stubs remain until integration golden tests pass with the real MaStar FITS asset.
 
 ## M8 — Upstream firefly diff (deferred)
-Compare local reference vs current upstream; apply incremental changes.
+
+## Testing
+- **177+ unit/golden tests** (`dotnet test tests/Falcon.Tests`)
+- CI: all CPU + golden JSON tests
+- Integration: `dotnet test --filter Category=Integration` (requires MaStar FITS + GPU)

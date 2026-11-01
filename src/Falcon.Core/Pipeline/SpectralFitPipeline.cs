@@ -1,6 +1,9 @@
 using Falcon.Core.Abstractions;
 using Falcon.Core.Configuration;
+using Falcon.Core.Diagnostics;
 using Falcon.Core.Constants;
+using Falcon.Core.Numerics;
+using Falcon.Core.DependencyInjection;
 using Falcon.Core.Services.Cosmology;
 using Falcon.Core.Services.IO;
 using Falcon.Core.Services.Fitting;
@@ -10,28 +13,73 @@ using ILGPU;
 using ILGPU.Algorithms;
 using ILGPU.Runtime;
 using BAVCL;
+using BAVCL.Core;
+using BAVCL.Modules.Masking;
+using BAVCL.Modules.Statistics;
+using BAVCL.Types;
 using System.Runtime.CompilerServices;
 
 namespace Falcon.Core.Pipeline;
 
 public class SpectralFitPipeline
 {
-    public SpectralFitPipeline(string path,
+    sealed class PipelineGpuKernels(
+        Action<AcceleratorStream, Index1D, ArrayView<float>, ArrayView<float>, ArrayView<int>, int> trimDownFlux,
+        Action<AcceleratorStream, Index1D, ArrayView<float>, ArrayView<float>, ArrayView<float>, float, float> consecutive2D,
+        Action<AcceleratorStream, Index1D, ArrayView<float>, ArrayView<float>, ArrayView<float>, ArrayView<float>, int> chiCalcRun1,
+        Action<AcceleratorStream, Index1D, ArrayView<float>, ArrayView<float>, ArrayView<float>, ArrayView<float>, ArrayView<int>, ArrayView<int>, int> chiCalcRun2)
+    {
+        public Action<AcceleratorStream, Index1D, ArrayView<float>, ArrayView<float>, ArrayView<int>, int> TrimDownFlux { get; } = trimDownFlux;
+        public Action<AcceleratorStream, Index1D, ArrayView<float>, ArrayView<float>, ArrayView<float>, float, float> Consecutive2D { get; } = consecutive2D;
+        public Action<AcceleratorStream, Index1D, ArrayView<float>, ArrayView<float>, ArrayView<float>, ArrayView<float>, int> ChiCalcRun1 { get; } = chiCalcRun1;
+        public Action<AcceleratorStream, Index1D, ArrayView<float>, ArrayView<float>, ArrayView<float>, ArrayView<float>, ArrayView<int>, ArrayView<int>, int> ChiCalcRun2 { get; } = chiCalcRun2;
+    }
+
+    static readonly ConditionalWeakTable<GPU, PipelineGpuKernels> PipelineKernelCache = new();
+
+    static PipelineGpuKernels GetPipelineKernels(GPU gpu) =>
+        PipelineKernelCache.GetValue(gpu, static g =>
+        {
+            var acc = g.accelerator;
+            return new PipelineGpuKernels(
+                acc.LoadAutoGroupedKernel<Index1D, ArrayView<float>, ArrayView<float>, ArrayView<int>, int>(TrimDownFlux),
+                acc.LoadAutoGroupedKernel<Index1D, ArrayView<float>, ArrayView<float>, ArrayView<float>, float, float>(ConsecutiveC_VDSP_2DKernel),
+                acc.LoadAutoGroupedKernel<Index1D, ArrayView<float>, ArrayView<float>, ArrayView<float>, ArrayView<float>, int>(ChiCalcRun1),
+                acc.LoadAutoGroupedKernel<Index1D, ArrayView<float>, ArrayView<float>, ArrayView<float>, ArrayView<float>, ArrayView<int>, ArrayView<int>, int>(ChiCalcRun2));
+        });
+
+    readonly PipelineGpuKernels _pipelineKernels;
+    public SpectralFitPipeline(GPU gpu,
+                   string path,
                    bool milky_Way_Reddening = true,
                    bool hPF_Mode = true,
                    ushort n_Masked_Amstrongs = 20,
-                   IDustService? dustService = null)
+                   IDustService? dustService = null,
+                   IStatisticsService? statisticsService = null,
+                   ISpectralFitter? spectralFitter = null,
+                   IFireflyFitsWriter? fitsWriter = null,
+                   CancellationToken cancellationToken = default)
     {
+        this.gpu = gpu ?? throw new ArgumentNullException(nameof(gpu));
+        FalconGpuHost.EnsureReady(this.gpu);
+        _pipelineKernels = GetPipelineKernels(this.gpu);
         DataFilePath = path;
         Milky_Way_Reddening = milky_Way_Reddening;
         HPF_Mode = hPF_Mode;
         N_Masked_Amstrongs = n_Masked_Amstrongs;
-        _dustService = dustService ?? new Services.Dust.DustService();
-        gpu = GPUManager.Default;
+        _cancellationToken = cancellationToken;
+        _dustService = dustService ?? new Services.Dust.DustService(gpu);
+        _statisticsService = statisticsService ?? new StatisticsService();
+        _spectralFitter = spectralFitter ?? new IterativeSpectralFitter(gpu);
+        _fitsWriter = fitsWriter ?? new FireflyFitsWriter();
     }
 
     readonly GPU gpu;
     readonly IDustService _dustService;
+    readonly IStatisticsService _statisticsService;
+    readonly ISpectralFitter _spectralFitter;
+    readonly IFireflyFitsWriter _fitsWriter;
+    readonly CancellationToken _cancellationToken;
 
     // SPECTRA SPECIFIC VARIABLES
     #region
@@ -97,7 +145,7 @@ public class SpectralFitPipeline
     public float[] Model_metals;
     public float[] Mass_factor;
     public int[] MatchingWavelengthMapping;
-
+    float[]? _modelFluxCpu;
 
     #endregion
 
@@ -115,8 +163,6 @@ public class SpectralFitPipeline
         Trust_Flag = 1;
         ObjID = 0;
 
-        Instrument_Resolution = Vector.Fill(gpu, instrument_resolution, Wavelength.Value.Length);
-
         if (Milky_Way_Reddening)
         {
             Ebv_MW = GetDustRADEC(this.RA_DEC, "ebv");
@@ -128,19 +174,9 @@ public class SpectralFitPipeline
 
         Restframe_Wavelength = Wavelength * (1 / (1 + this.Redshift));
 
-        // Generates the Filter Mask 2 Remove Bad data from the spectrum
-        Vector BadDataMask = GenerateDataMask(Flux, Error);
-        BadDataMask.SyncCPU();
+        ApplyGoodDataMask();
 
-        if (BadDataMask.Value.Contains(0f))
-        {
-            // Filter Out the bad data
-            Console.WriteLine("Warning Bad Data Detected");
-        }
-        else
-        {
-            //Console.WriteLine("Data is Fine");
-        }
+        Instrument_Resolution = Vector.Fill(gpu, instrument_resolution, Wavelength.Length);
 
         // CALCULATE LUMINOSITY DISTANCE in CM and convert to Mpc
         Distance_Luminosity = FitsSpectrumReader.Mpc2cm(LegacyConfig.Cosmology.GPU_Integration(gpu, this.Redshift, 1e-8f));
@@ -181,50 +217,7 @@ public class SpectralFitPipeline
 
         Restframe_Wavelength = this.Wavelength * XMath.Rcp(1 + this.Redshift);
 
-
-        // Remove Bad data from the spectrum
-        // Generates the Filter Mask
-
-        Vector BadDataMask = GenerateDataMask(this.Flux, this.Error);
-        BadDataMask.SyncCPU();
-
-        if (BadDataMask.Value.Contains(0f))
-        {
-            // Filter Out the bad data
-            int goodvals = (int)BadDataMask.Sum();
-
-            float[] new_wavelength = new float[goodvals];
-            float[] new_restframewavelength = new float[goodvals];
-            float[] new_flux = new float[goodvals];
-            float[] new_error = new float[goodvals];
-
-            this.Wavelength.SyncCPU();
-            Restframe_Wavelength.SyncCPU();
-            this.Flux.SyncCPU();
-            this.Error.SyncCPU();
-
-            for (int i = 0, j = 0; i < BadDataMask.Length; i++)
-            {
-                if (BadDataMask.Value[i] != 1) { continue; }
-
-                new_wavelength[j] = this.Wavelength[i];
-                new_restframewavelength[j] = Restframe_Wavelength[i];
-                new_flux[j] = this.Flux.Value[i];
-                new_error[j] = this.Error.Value[i];
-                j++;
-            }
-
-            this.Wavelength.UpdateCache(new_wavelength);
-            Restframe_Wavelength.UpdateCache(new_restframewavelength);
-            this.Flux.UpdateCache(new_flux);
-            this.Error.UpdateCache(new_error);
-
-            //Console.WriteLine($"Warning Bad Data Detected, {BadDataMask.Sum() / BadDataMask.Length * 100}% are Good");
-        }
-        else
-        {
-            //Console.WriteLine("Data is Fine");
-        }
+        ApplyGoodDataMask();
 
         Instrument_Resolution = Vector.Fill(gpu, instrument_resolution, this.Wavelength.Length);
 
@@ -248,38 +241,42 @@ public class SpectralFitPipeline
 
     // SPECTRAL - SPECTRUM FUNCTIONS
     #region
-    private Vector GenerateDataMask(Vector flux, Vector error) // Also add emission lines filter
+    private void ApplyGoodDataMask()
     {
-        flux.IncrementLiveCount();
-        error.IncrementLiveCount();
+        Mask goodMask = BuildGoodDataMask(Flux, Error);
+        if (!MaskHasBadLanes(goodMask))
+            return;
 
-        Vector output = new(gpu, new float[flux.Length]);
-        output.IncrementLiveCount();
+        Vector filteredFlux = Flux.FilterX(goodMask);
+        if (filteredFlux.Length == 0)
+            throw new InvalidOperationException("No valid spectral pixels remain after quality masking.");
 
-        MemoryBuffer1D<float, Stride1D.Dense>
-            buffer = output.GetBuffer(),
-            buffer2 = flux.GetBuffer(),
-            buffer3 = error.GetBuffer();
-
-        var kernelWithStream = gpu.accelerator.LoadAutoGroupedKernel<Index1D, ArrayView<float>, ArrayView<float>, ArrayView<float>>(GPU_GenerateDataMaskKernal);
-        kernelWithStream(gpu.accelerator.DefaultStream, buffer.IntExtent, buffer.View, buffer2.View, buffer3.View);
-
-        gpu.accelerator.Synchronize();
-
-        flux.DecrementLiveCount();
-        error.DecrementLiveCount();
-        output.DecrementLiveCount();
-
-        return output;
+        Wavelength = Wavelength.FilterX(goodMask);
+        Restframe_Wavelength = Restframe_Wavelength.FilterX(goodMask);
+        Flux = filteredFlux;
+        Error = Error.FilterX(goodMask);
     }
 
-    // GPU KERNEL
-    static void GPU_GenerateDataMaskKernal(Index1D index, ArrayView<float> OutPut, ArrayView<float> flux, ArrayView<float> error)
+    /// <summary>
+    /// Quality mask built entirely on the GPU — avoids pulling flux/error to CPU.
+    /// Matches firefly: finite, strictly positive flux and error.
+    /// </summary>
+    private static Mask BuildGoodDataMask(Vector flux, Vector error)
     {
-        // False means Exclude/Bad Data, True means Good Data
-        var tst = !(float.IsNaN(flux[index]) || float.IsInfinity(flux[index]) || (flux[index] <= 0f) || float.IsNaN(error[index]) || float.IsInfinity(error[index]));
-        //Convert.ToSingle(!(float.IsNaN(flux[index]) || float.IsInfinity(flux[index]) || (flux[index] <= 0f) || float.IsNaN(error[index]) || float.IsInfinity(error[index])));
-        OutPut[index] = tst ? 1 : 0;
+        const float upper = float.MaxValue;
+        return (flux > 0f) & (flux < upper) & (error > 0f) & (error < upper);
+    }
+
+    /// <summary>Checks only the compact mask bitmap (not the full spectrum vectors).</summary>
+    private static bool MaskHasBadLanes(Mask mask)
+    {
+        foreach (bool bit in mask.ToBoolArray())
+        {
+            if (!bit)
+                return true;
+        }
+
+        return false;
     }
 
     private float GetDustRADEC(float[] RADEC, string dustmap, bool interpolate = true)
@@ -412,38 +409,122 @@ public class SpectralFitPipeline
     #region
     public void Fit_models_to_data()
     {
-        // enumerate over each model_lib (mi, mm)?
-        // only 1 model library so, index mi = 0, mm = "MaStar"
+        Get_Model();
 
-
-        // model_lib = Model_key = MaStar-Th
-        // deltal_libs = List<double> of r_model
-
-
-        // enumerate over imfs (ii)
-        // only 1 imf so, foreach ii in imfs
-        Get_Model(); //sets: model_wave_int,model_flux_int,age,metal
-
-
-        // this.raw_model_wave_int = model_wave_int
-        // this.raw_model_flux_int ... this.metal = metal
-        //Match_data_models(); 
-        NormaliseSpec();
-
-        if (LegacyConfig.HPF_Mode && Model_flux is not null && Model_ages is not null)
+        if (LegacyConfig.FittingEngine == "legacy_gpu")
         {
-            RunDustAttenuationPipeline();
+            RunLegacyGpuPath();
+            return;
         }
 
-        GenerateInterpSSP();
+        var orchestrator = new FireflyFitOrchestrator(_dustService, _statisticsService, _spectralFitter, _fitsWriter);
+        var ctx = BuildFireflyContext();
+        if (orchestrator.TryFit(ctx, out _))
+            return;
 
+        if (LegacyConfig.LegacyGpuFallback)
+            RunLegacyGpuPath();
+    }
 
+    private void RunLegacyGpuPath()
+    {
+        NormaliseSpec();
+        using (GpuScope.BeginReadOnly(Model_flux, Flux, Error))
+        {
+            if (LegacyConfig.HPF_Mode)
+                RunDustAttenuationPipeline();
+            GenerateInterpSSP();
+        }
+    }
 
+    private static string DustLawName() => LegacyConfig.Dust_Law switch
+    {
+        1 => "allen",
+        2 => "prevot",
+        _ => "calzetti"
+    };
+
+    private FireflyFitContext BuildFireflyContext()
+    {
+        int nModels = Model_ages.Length;
+        int nData = Restframe_Wavelength.Length;
+        int cols = Model_flux.Columns;
+        double[] flat = _modelFluxCpu is { Length: > 0 } cpu
+            ? Array.ConvertAll(cpu, v => (double)v)
+            : Model_flux.RetrieveReadOnlySpan().ToArray().Select(v => (double)v).ToArray();
+        int[] map = MatchingWavelengthMapping ?? Enumerable.Range(0, Math.Min(nData, cols)).ToArray();
+
+        var modelFluxRaw = new double[nModels][];
+        for (int m = 0; m < nModels; m++)
+        {
+            modelFluxRaw[m] = new double[nData];
+            int rowOffset = m * cols;
+            for (int i = 0; i < nData; i++)
+            {
+                int modelIdx = i < map.Length ? map[i] : Math.Min(i, cols - 1);
+                modelIdx = Math.Clamp(modelIdx, 0, cols - 1);
+                double v = flat[rowOffset + modelIdx];
+                modelFluxRaw[m][i] = double.IsFinite(v) ? v : 0;
+            }
+        }
+
+        ReadOnlySpan<float> dataWave = Restframe_Wavelength.RetrieveReadOnlySpan();
+        ReadOnlySpan<float> dataFlux = Flux.RetrieveReadOnlySpan();
+        ReadOnlySpan<float> dataError = Error.RetrieveReadOnlySpan();
+
+        var dataWaveArr = new double[nData];
+        var dataFluxArr = new double[nData];
+        var dataErrorArr = new double[nData];
+        for (int i = 0; i < nData; i++)
+        {
+            dataWaveArr[i] = dataWave[i];
+            dataFluxArr[i] = dataFlux[i];
+            dataErrorArr[i] = dataError[i];
+        }
+
+        return new FireflyFitContext
+        {
+            DataFilePath = DataFilePath,
+            DataWavelength = dataWaveArr,
+            DataFlux = dataFluxArr,
+            DataError = dataErrorArr,
+            ModelWavelength = dataWaveArr,
+            ModelFluxRaw = modelFluxRaw,
+            ModelsOnDataGrid = true,
+            ModelAges = Model_ages.Select(a => (double)a).ToArray(),
+            ModelMetals = Model_metals.Select(z => (double)z).ToArray(),
+            DistanceLumCm = Distance_Luminosity,
+            Redshift = Redshift
+        };
+    }
+
+    static void TraceGetModelComplete(int nModels, float[] fluxBank, float[] ages)
+    {
+        if (!FitTrace.Enabled) return;
+        int cols = nModels > 0 ? fluxBank.Length / nModels : 0;
+        var model0 = cols > 0 ? fluxBank.AsSpan(0, cols).ToArray() : [];
+        double bankMax = 0;
+        int bankPositive = 0;
+        foreach (double v in fluxBank)
+        {
+            if (double.IsFinite(v) && v > 0) bankPositive++;
+            if (double.IsFinite(v) && v > bankMax) bankMax = v;
+        }
+        FitTrace.Emit("get_model", new Dictionary<string, object>
+        {
+            ["n_models"] = nModels,
+            ["n_wave"] = cols,
+            ["age_min"] = ages.Length > 0 ? ages.Min() : 0,
+            ["age_max"] = ages.Length > 0 ? ages.Max() : 0,
+            ["bank_max"] = bankMax,
+            ["bank_positive"] = bankPositive,
+        }.Concat(FitTrace.Stats("raw_model0", model0.Select(v => (double)v).ToArray()))
+         .ToDictionary(kv => kv.Key, kv => kv.Value));
     }
 
     private void Get_Model()
     {
-
+        using var _ = FitTrace.BeginSpan("get_model");
         // M11 Models
         if (LegacyConfig.Model_Key % 2 == 1)
         {
@@ -466,24 +547,51 @@ public class SpectralFitPipeline
         if (LegacyConfig.Model_Key % 2 == 0)
         {
             // Gets Wavelengths from Model Data
-            Model_wavelength = FireflyConstants.wavelength;  // Lacking 1dp precision
+            Model_wavelength = FireflyConstants.wavelength;
             // Gets Indexes of Models matching wavlengths
             TrimModel();
 
-            (int[] indx, ResolutionService res, VariableGaussianKernel vGK) = DownGradeModelInvar(Model_wavelength, Velocity_dispersion_r, FireflyConstants.sres, Instrument_Resolution);
+            int nWave = FireflyConstants.wavelengthCpu.Length;
+            double[]? mwAtten = null;
+            if (Ebv_MW != 0)
+            {
+                var waveDoubles = new double[nWave];
+                for (int k = 0; k < nWave; k++)
+                    waveDoubles[k] = FireflyConstants.wavelengthCpu[k];
+                mwAtten = _dustService.FitzpatrickUnred(waveDoubles, -Ebv_MW);
+                if (FitTrace.Enabled)
+                {
+                    double aMin = double.PositiveInfinity, aMax = 0;
+                    int aZero = 0;
+                    foreach (double a in mwAtten)
+                    {
+                        if (a == 0) aZero++;
+                        if (a < aMin) aMin = a;
+                        if (a > aMax) aMax = a;
+                    }
+                    FitTrace.Emit("mw_atten", new Dictionary<string, object>
+                    {
+                        ["ebv_mw"] = Ebv_MW,
+                        ["min"] = aMin,
+                        ["max"] = aMax,
+                        ["zeros"] = aZero,
+                    });
+                }
+            }
 
-            List<float> model_flux = new();
+            Vector modelSres = FireflyConstants.sres.Copy(Cache: false);
+            (int[] indx, ResolutionService res, VariableGaussianKernel vGK) = DownGradeModelInvar(Model_wavelength, Velocity_dispersion_r, modelSres, Instrument_Resolution);
+
+            List<double> model_flux = new();
             List<float> age_model = new();
             List<float> metal_model = new();
+            List<(float[] Row, float Age, float Metal)> pendingRows = LegacyConfig.Downgrade_models ? new() : null!;
 
-
-            Vector flux = new(gpu, new float[FireflyConstants.wavelength.Length], 1, false);
-
-
-            // MAX AGE needs fixing to use data from the fits input
+            float[] rowF = new float[nWave];
 
             for (int i = 0; i < FireflyConstants.t.Length; i++)
             {
+                _cancellationToken.ThrowIfCancellationRequested();
                 //index i in t , t value
                 if ((FireflyConstants.t[i] < LegacyConfig.MinMax_Model_Age[0]) || (FireflyConstants.t[i] > LegacyConfig.MinMax_Model_Age[1]))
                 {
@@ -502,52 +610,33 @@ public class SpectralFitPipeline
                         continue;
                     }
 
-                    // TRIM DOWN THE WAVELENGTH AND THE FLUX to correspond to Data
-                    for (int k = 0; k < flux.Length; k++)
-                    {
-                        flux.Value[k] = FireflyConstants.fluxgrid[i, j, FireflyConstants.sidx, k];
-                    }
-                    flux.UpdateCache();
+                    for (int k = 0; k < nWave; k++)
+                        rowF[k] = SanitizeModelFlux(FireflyConstants.fluxgrid[i, j, FireflyConstants.sidx, k]);
 
-                    // no conversion to vacuum needed, assuming models are in vacuum
-
-                    // downgrades the model
                     if (LegacyConfig.Downgrade_models)
                     {
-                        flux = DownGrade(gpu, flux, indx, res, vGK);
+                        pendingRows.Add(((float[])rowF.Clone(), FireflyConstants.t[i], FireflyConstants.Z[j]));
+                        continue;
                     }
 
-
-                    // Reddens the models
-                    if (Ebv_MW != 0)
-                    {
-                        Vector attenuations = unred(FireflyConstants.wavelength, -Ebv_MW); // ebv = 0f - ebv_mw
-
-                        try
-                        {
-                            model_flux.AddRange((flux * attenuations).Pull());
-
-                        }
-                        catch (Exception)
-                        {
-                            throw new Exception("Spectral Model Run Out of Memory In Fit_Data_To_Models - Get_Models Function");
-                        }
-
-                    }
-                    else
-                    {
-                        model_flux.AddRange(flux.Pull());
-                    }
-
-                    age_model.Add(FireflyConstants.t[i]);
-                    metal_model.Add(FireflyConstants.Z[j]); // In FireFly 10^{Z[j]} is used to get Metalicity in units of Solar Metalicity
-
+                    AppendModelRow(model_flux, rowF, mwAtten, null, age_model, metal_model, FireflyConstants.t[i], FireflyConstants.Z[j]);
                 }
             }
 
-            Model_flux = new Vector(gpu, model_flux.ToArray(), FireflyConstants.wavelength.Length); // 2D flattened Array
+            if (LegacyConfig.Downgrade_models && pendingRows.Count > 0)
+            {
+                BatchMatchSpectralResolution(pendingRows, indx, vGK);
+                var mwScratch = mwAtten is null ? null : new double[nWave];
+                foreach (var (row, age, metal) in pendingRows)
+                    AppendModelRow(model_flux, row, mwAtten, mwScratch, age_model, metal_model, age, metal);
+            }
+
+            _modelFluxCpu = model_flux.Select(v => v > float.MaxValue ? float.MaxValue : (float)v).ToArray();
+            var gpuFlux = (float[])_modelFluxCpu.Clone();
+            Model_flux = new Vector(gpu, gpuFlux, nWave);
             Model_ages = age_model.ToArray();
             Model_metals = metal_model.ToArray();
+            TraceGetModelComplete(Model_ages.Length, _modelFluxCpu, Model_ages);
 
             return;
         }
@@ -557,27 +646,17 @@ public class SpectralFitPipeline
 
     private void TrimModel()
     {
-        Model_wavelength.SyncCPU();
-        Restframe_Wavelength.SyncCPU();
+        ReadOnlySpan<float> modelWave = Model_wavelength.RetrieveReadOnlySpan();
+        ReadOnlySpan<float> dataWave = Restframe_Wavelength.RetrieveReadOnlySpan();
 
-        int length_Data = Restframe_Wavelength.Length; // Data
-        int length_Mod = Model_wavelength.Length; // Model
+        int length_Data = dataWave.Length;
+        int length_Mod = modelWave.Length;
         int[] indxs;
 
-        // If data lies within the model
-        if (Model_wavelength[0] < Restframe_Wavelength[0] && Model_wavelength.Value[^1] > Restframe_Wavelength.Value[^1])
+        if (modelWave[0] < dataWave[0] && modelWave[^1] > dataWave[^1])
         {
-
-            float[] endVal = (from mwl in Model_wavelength.Value
-                              select Math.Abs(mwl - Restframe_Wavelength.Value[^1])).ToArray();
-
-            int endIdx = Array.IndexOf(endVal, endVal.Min()) + 1;
-
-
-            float[] startVal = (from mwl in Model_wavelength.Value[0..(endIdx + 1)]
-                                select Math.Abs(mwl - Restframe_Wavelength.Value[0])).ToArray();
-
-            int startIdx = Array.IndexOf(startVal, startVal.Min());
+            int endIdx = IndexOfMinAbsDiff(modelWave, dataWave[^1]) + 1;
+            int startIdx = IndexOfMinAbsDiff(modelWave[..(endIdx + 1)], dataWave[0]);
 
             if (endIdx - startIdx == length_Data)
             {
@@ -585,67 +664,112 @@ public class SpectralFitPipeline
                 return;
             }
 
-
             if (endIdx - startIdx != length_Data)
             {
                 indxs = new int[length_Data];
                 indxs[0] = startIdx;
                 indxs[^1] = endIdx;
                 for (int i = 1; i < indxs.Length - 1; i++)
-                {
-                    float[] matchtest = (from mwl in Model_wavelength.Value[0..endIdx]
-                                            select Math.Abs(mwl - Restframe_Wavelength[i])).ToArray();
-                    indxs[i] = Array.IndexOf(matchtest, matchtest.Min());
-                }
+                    indxs[i] = IndexOfMinAbsDiff(modelWave[..endIdx], dataWave[i]);
 
                 MatchingWavelengthMapping = indxs;
                 return;
             }
-
         }
 
-        // If the data lies outside the model
         DataLiesOutsideModel = true;
 
-        indxs = new int[length_Mod];
-        for (int i = 0; i < Restframe_Wavelength.Length; i++)
-        {
-            float[] matchtest = (from mwl in Model_wavelength.Value
-                                 select Math.Abs(mwl - Restframe_Wavelength[i])).ToArray();
-            indxs[i] = Array.IndexOf(matchtest, matchtest.Min());
-        }
-        MatchingWavelengthMapping = indxs;
+        indxs = new int[length_Data];
+        for (int i = 0; i < dataWave.Length; i++)
+            indxs[i] = IndexOfNearestSorted(modelWave, dataWave[i]);
 
-        return;
+        MatchingWavelengthMapping = indxs;
+    }
+
+    static int IndexOfNearestSorted(ReadOnlySpan<float> sortedValues, float target)
+    {
+        if (sortedValues.IsEmpty) return 0;
+        int lo = 0;
+        int hi = sortedValues.Length - 1;
+        while (lo < hi)
+        {
+            int mid = (lo + hi) >> 1;
+            if (sortedValues[mid] < target) lo = mid + 1;
+            else hi = mid;
+        }
+        if (lo > 0 && MathF.Abs(sortedValues[lo - 1] - target) < MathF.Abs(sortedValues[lo] - target))
+            return lo - 1;
+        return lo;
+    }
+
+    /// <summary>MaStar fluxgrid uses -99 as missing-pixel sentinel (firefly leaves other values unchanged).</summary>
+    private static float SanitizeModelFlux(float value)
+    {
+        if (!float.IsFinite(value) || value <= -90f)
+            return 0f;
+        return value;
+    }
+
+    private static int IndexOfMinAbsDiff(ReadOnlySpan<float> values, float target)
+    {
+        int best = 0;
+        float bestDiff = MathF.Abs(values[0] - target);
+        for (int i = 1; i < values.Length; i++)
+        {
+            float diff = MathF.Abs(values[i] - target);
+            if (diff < bestDiff)
+            {
+                bestDiff = diff;
+                best = i;
+            }
+        }
+
+        return best;
+    }
+
+    private static Vector MultiplyElementWiseMatchingLength(Vector left, Vector right)
+    {
+        if (left.Shape().MatchesDimensions(right.Shape()))
+            return left * right;
+
+        int leftCols = left.Columns;
+        int rightCols = right.Columns;
+        left.Flatten();
+        right.Flatten();
+        Vector product = left * right;
+        left.Columns = leftCols;
+        right.Columns = rightCols;
+        return product;
     }
 
     private (int[], ResolutionService, VariableGaussianKernel) DownGradeModelInvar(Vector mod_wavelength, int vdisp_round, Vector sres, Vector r_instrument, float min_sig_pix = 0f, bool no_offset = true)
     {
-        Vector new_sig = new(gpu, new float[mod_wavelength.Length], 1, false);
-        r_instrument.SyncCPU();
+        Vector new_sig = new(gpu, new float[mod_wavelength.Length], 0, false);
+        ReadOnlySpan<float> rInst = r_instrument.RetrieveReadOnlySpan();
+        var mappingHead = MatchingWavelengthMapping.Length > 1
+            ? MatchingWavelengthMapping[..^1].ToHashSet()
+            : new HashSet<int>();
 
-        for (int i = 0, j = 0; i < mod_wavelength.Length; i++)
+        using (var scope = new_sig.CpuScopeAndSync())
         {
-            if (MatchingWavelengthMapping[..^1].Contains(i))
+            EditableView<float> view = scope.View;
+            for (int i = 0, j = 0; i < mod_wavelength.Length; i++)
             {
-                j++;
+                if (mappingHead.Contains(i))
+                    j++;
+
+                float sig_instrument = FireflyConstants.c_kms / (rInst[j] * FireflyConstants.sig2FWHM);
+                view[i] = MathF.Sqrt(MathF.Pow(vdisp_round, 2f) + MathF.Pow(sig_instrument, 2f));
             }
-
-            float sig_instrument = FireflyConstants.c_kms / (r_instrument[j] * FireflyConstants.sig2FWHM);
-            new_sig.Value[i] = MathF.Sqrt(MathF.Pow(vdisp_round, 2f) + MathF.Pow(sig_instrument, 2f));
-
         }
-        new_sig.UpdateCache();
 
         Vector new_sres = FireflyConstants.c_div_sig2 / new_sig;
 
-        // IF mod_wavelength < 5 -> raise an error ?? Unlikely
-
         bool log_wave = true;
-        if ((mod_wavelength.Value[3] - mod_wavelength.Value[2]) - (mod_wavelength.Value[2] - mod_wavelength.Value[1]) < 0.000001f * (mod_wavelength.Value[2] - mod_wavelength.Value[1]))
-        {
+        float step12 = mod_wavelength.GetAt(3) - mod_wavelength.GetAt(2);
+        float step01 = mod_wavelength.GetAt(2) - mod_wavelength.GetAt(1);
+        if (step12 - step01 < 0.000001f * step01)
             log_wave = false;
-        }
 
 
         // match_ResolutionService Begins
@@ -653,7 +777,7 @@ public class SpectralFitPipeline
         Vector wave = mod_wavelength;
         Vector new_sres_wave = mod_wavelength;
 
-        if (wave.Min() < new_sres_wave.Value[0] || wave.Max() > new_sres_wave.Value[^1])
+        if (wave.MinX() < new_sres_wave.GetAt(0) || wave.MaxX() > new_sres_wave.GetAt(new_sres_wave.Length - 1))
         {
             Console.WriteLine("WARNING : Mapping to the new spectral resolution will require extrapolating the provided input vectors!");
         }
@@ -663,41 +787,31 @@ public class SpectralFitPipeline
 
         res.match(new_res, no_offset, min_sig_pix);
 
+        Mask activeMask = res.sig_pd > min_sig_pix;
+        bool[] activeBits = activeMask.ToBoolArray();
+        var indxList = new List<int>(activeBits.Length);
+        for (int i = 0; i < activeBits.Length; i++)
+        {
+            if (activeBits[i])
+                indxList.Add(i);
+        }
 
-
-        //bool[] mask = Enumerable.Repeat<bool>(false, res.sig_mask.Length).ToArray();
-
-        res.sig_pd.SyncCPU();
-        int[] indx = (from sigpd in res.sig_pd.Value
-                      where sigpd > min_sig_pix
-                      select Array.IndexOf(res.sig_pd.Value, sigpd)).ToArray();
-
-
-
-
+        ReadOnlySpan<float> sigPd = res.sig_pd.RetrieveReadOnlySpan();
+        int[] indx = indxList.ToArray();
         int len = indx.Length;
-        float[] adjusted = res.adjusted_resolution(indx);
         VariableGaussianKernel vGK;
-
 
         if (len > 0f)
         {
-
             float[] selectedsig = new float[len];
             for (int i = 0; i < len; i++)
-            {
-                sres.Value[indx[i]] = adjusted[i]; // sres_out
-                selectedsig[i] = res.sig_pd[indx[i]];
-            }
+                selectedsig[i] = sigPd[indx[i]];
 
             vGK = new VariableGaussianKernel(gpu, selectedsig);
-
         }
         else
         {
-
-            sres.UpdateCache(adjusted);              // sres_out
-            vGK = new VariableGaussianKernel(gpu, res.sig_pd.Pull());
+            vGK = new VariableGaussianKernel(gpu, res.sig_pd.RetrieveReadOnlySpan().ToArray());
         }
 
         //if (res.sig_mask.Contains(true) || mask.Contains(true))
@@ -711,86 +825,76 @@ public class SpectralFitPipeline
         return (indx, res, vGK);
     }
 
-    private Vector DownGrade(GPU gpu, Vector flux, int[] indx, ResolutionService res, VariableGaussianKernel vGK)
+    static void AppendModelRow(
+        List<double> modelFlux,
+        ReadOnlySpan<float> rowF,
+        double[]? mwAtten,
+        double[]? mwScratch,
+        List<float> ageModel,
+        List<float> metalModel,
+        float age,
+        float logMetal)
     {
+        if (mwAtten is null)
+        {
+            for (int k = 0; k < rowF.Length; k++)
+            {
+                float f = SimdSpanOps.SanitizeFluxScalar(rowF[k]);
+                modelFlux.Add(f);
+            }
+        }
+        else
+        {
+            if (mwScratch is null || mwScratch.Length < rowF.Length)
+                throw new ArgumentException("mwScratch must cover row length when Milky Way attenuation is enabled.", nameof(mwScratch));
+            SimdSpanOps.MultiplyFloatToDouble(rowF, mwAtten, mwScratch.AsSpan(0, rowF.Length));
+            for (int k = 0; k < rowF.Length; k++)
+                modelFlux.Add(mwScratch[k]);
+        }
 
-        Match_ResolutionService(gpu, flux, indx, res, vGK);
+        ageModel.Add(age);
+        metalModel.Add(MathF.Pow(10f, logMetal));
+    }
 
-        // Call match_ResolutionService(mod_wavelength, flux, sres, mod_wavelength, new_sres, min_sig_pix=0.0,
-        // log10=log_wave, new_log10=log_wave)
-        // get : new_flux, matched_sres, sigma_offset, new_mask
+    void BatchMatchSpectralResolution(List<(float[] Row, float Age, float Metal)> rows, int[] indx, VariableGaussianKernel vGK)
+    {
+        for (int r = 0; r < rows.Count; r++)
+            MatchSpectralResolution(gpu, rows[r].Row, indx, vGK);
+    }
 
+    private float[] DownGrade(GPU gpu, float[] flux, int[] indx, ResolutionService res, VariableGaussianKernel vGK)
+    {
+        MatchSpectralResolution(gpu, flux, indx, vGK);
         return flux;
     }
 
-    private void Match_ResolutionService(GPU gpu, Vector flux, int[] indx, ResolutionService res, VariableGaussianKernel vGK)
+    private static void MatchSpectralResolution(GPU gpu, float[] flux, int[] indx, VariableGaussianKernel vGK)
     {
-        //var dims = 1;
+        float peak = 0f;
+        for (int i = 0; i < flux.Length; i++)
+            if (float.IsFinite(flux[i]) && flux[i] > peak) peak = flux[i];
+        if (peak <= 0f) return;
 
-        // 0.2s
-        //ResolutionService new_res = new ResolutionService(gpu, new_sres_wave, new_sres.Value, log10 = new_log10);
-
-        // 0.2s
-        //ResolutionService res = new ResolutionService(gpu, wave, sres, log10);
-        // 18-20s
-        //res.match(new_res, no_offset, min_sig_pix);
-        //float sigma_offset = res.sig_vo;
-
-        // FLUX DEPENDENT SECTION
-        //float[] out_flux = flux;
+        float invPeak = 1f / peak;
+        SimdSpanOps.ScaleInPlace(flux, invPeak);
 
         int len = indx.Length;
         if (len > 0)
         {
             float[] selectedflux = new float[len];
             for (int i = 0; i < len; i++)
-            {
-                selectedflux[i] = flux.Value[indx[i]];
-            }
+                selectedflux[i] = flux[indx[i]];
 
-            float[] selected_outflux = vGK.Convolve(gpu, new Vector(gpu, selectedflux)).Pull();
-
+            float[] selected_outflux = vGK.Convolve(gpu, selectedflux);
             for (int i = 0; i < len; i++)
-            {
-                flux.Value[indx[i]] = selected_outflux[i];   // flux out     
-            }
-            flux.UpdateCache();
+                flux[indx[i]] = selected_outflux[i];
         }
         else
         {
-            //Console.WriteLine($"the length of y is : {flux.Length}");
-            flux = vGK.Convolve(gpu, flux);               // flux out
+            Array.Copy(vGK.Convolve(gpu, flux), flux, flux.Length);
         }
-        #region
-        // thus ignor else                                      #02
 
-        //float[] adjusted = res.adjusted_resolution(indx);
-        //if (len > 0f)
-        //{
-        //    for (int i = 0; i < indx.Length; i++)
-        //    {
-        //        out_sres[indx[i]] = adjusted[i];
-        //    }
-        //}
-        //else
-        //{
-        //    out_sres = adjusted;
-        //}
-
-        //if (res.sig_mask.Contains(true) || mask.Contains(true))
-        //{
-        //    for (int i = 0; i < mask.Length; i++)
-        //    {
-        //        out_mask[i] = res.sig_mask[i] || mask[i];
-        //    }
-        //}
-        //else
-        //{
-        //    out_mask = mask;
-        //}
-        //thus ignore else                                       #01
-        #endregion
-
+        SimdSpanOps.ScaleInPlace(flux, peak);
     }
 
 
@@ -816,50 +920,59 @@ public class SpectralFitPipeline
 
     private void NormaliseSpec()
     {
-        float data_norm = FitsSpectrumReader.Median(Flux.Pull());
-        int num_mods = Model_flux.Length / Model_flux.Columns;     // 198
+        float data_norm;
+        using (GpuScope.BeginReadOnly(Flux))
+            data_norm = Flux.MedianX();
 
-        Vector model_norm = new(gpu, new float[num_mods], 1, false);
+        int num_mods = Model_flux.Length / Model_flux.Columns;
+
+        Vector model_norm = new(gpu, new float[num_mods], 0, false);
         float[] mass_factor = new float[num_mods];
+        ReadOnlySpan<float> modelFlux;
+        using (GpuScope.BeginReadOnly(Model_flux))
+            modelFlux = Model_flux.RetrieveReadOnlySpan();
+        int cols = Model_flux.Columns;
 
-        Model_flux.SyncCPU();
-        for (int i = 0; i < num_mods; i++)
+        using (var scope = model_norm.CpuScopeAndSync())
         {
-            model_norm[i] = FitsSpectrumReader.Median(Model_flux.GetRowAsArray(i, true));
-            mass_factor[i] = data_norm / model_norm[i];
+            EditableView<float> view = scope.View;
+            for (int i = 0; i < num_mods; i++)
+                view[i] = MedianOfSpan(modelFlux.Slice(i * cols, cols));
         }
 
-        model_norm.UpdateCache();
-
-        // OVER-WRITES MODEL FLUX WITH THE NORMALISED MODEL FLUX
-        Model_flux = ConsecutiveCompoundOperation2D(Model_flux, model_norm, data_norm);
+        using (GpuScope.BeginReadOnly(Model_flux))
+            Model_flux = ConsecutiveCompoundOperation2D(Model_flux, model_norm, data_norm);
+        for (int i = 0; i < num_mods; i++)
+            mass_factor[i] = data_norm / model_norm.RetrieveReadOnlySpan()[i];
         Mass_factor = mass_factor;
+    }
 
+    static float MedianOfSpan(ReadOnlySpan<float> values)
+    {
+        var scratch = new float[values.Length];
+        values.CopyTo(scratch);
+        return FitsSpectrumReader.Median(scratch);
     }
 
     public Vector ConsecutiveCompoundOperation2D(Vector vectorA, Vector vectorB, float scalar)
     {
-        vectorA.IncrementLiveCount();
-        vectorB.IncrementLiveCount();
-
         Vector output = new(gpu, new float[vectorA.Length], vectorA.Columns);
 
-        output.IncrementLiveCount();
-
-        var kernelWithStream = gpu.accelerator.LoadAutoGroupedKernel<Index1D, ArrayView<float>, ArrayView<float>, ArrayView<float>, float, float>(ConsecutiveC_VDSP_2DKernel);
-
-        var buffer = output.GetBuffer(); // Output
-        var buffer2 = vectorA.GetBuffer(); // Input
-        var buffer3 = vectorB.GetBuffer(); // Input
-
-
-        kernelWithStream(gpu.accelerator.DefaultStream, buffer.IntExtent, buffer.View, buffer2.View, buffer3.View, vectorA.Columns, scalar);
-
-        gpu.accelerator.Synchronize();
-
-        vectorA.DecrementLiveCount();
-        vectorB.DecrementLiveCount();
-        output.DecrementLiveCount();
+        using (GpuScope.Begin(output, vectorA, vectorB))
+        {
+            var buffer = output.GetBuffer();
+            var buffer2 = vectorA.GetBuffer();
+            var buffer3 = vectorB.GetBuffer();
+            _pipelineKernels.Consecutive2D(
+                gpu.accelerator.DefaultStream,
+                buffer.IntExtent,
+                buffer.View,
+                buffer2.View,
+                buffer3.View,
+                vectorA.Columns,
+                scalar);
+            gpu.accelerator.Synchronize();
+        }
 
         return output;
     }
@@ -871,14 +984,8 @@ public class SpectralFitPipeline
 
     private Vector unred(Vector wavelength, float ebv_mw)
     {
-        wavelength.SyncCPU();
-        var wave = wavelength.Pull();
-        var atten = _dustService.Unred(wave.Select(w => (double)w).ToArray(), ebv_mw, LegacyConfig.Dust_Law switch
-        {
-            1 => "allen",
-            2 => "prevot",
-            _ => "calzetti"
-        });
+        var wave = wavelength.RetrieveReadOnlySpan().ToArray();
+        var atten = _dustService.FitzpatrickUnred(wave.Select(w => (double)w).ToArray(), ebv_mw);
         return new Vector(gpu, atten.Select(a => (float)a).ToArray());
     }
 
@@ -886,12 +993,12 @@ public class SpectralFitPipeline
     {
         int nModels = Model_ages.Length;
         int nWave = Flux.Length;
-        var wave = Restframe_Wavelength.Pull().Select(w => (double)w).ToArray();
-        var data = Flux.Pull().Select(v => (double)v).ToArray();
-        var err = Error.Pull().Select(v => (double)v).ToArray();
+        var wave = Restframe_Wavelength.RetrieveReadOnlySpan().ToArray().Select(w => (double)w).ToArray();
+        var data = Flux.RetrieveReadOnlySpan().ToArray().Select(v => (double)v).ToArray();
+        var err = Error.RetrieveReadOnlySpan().ToArray().Select(v => (double)v).ToArray();
         var modelFlux = new double[nModels][];
         for (int m = 0; m < nModels; m++)
-            modelFlux[m] = Model_flux.GetRowAsArray(m, true).Select(v => (double)v).ToArray();
+            modelFlux[m] = Model_flux.GetRowAsArray(m).Select(v => (double)v).ToArray();
 
         var dustInput = new DustAttenuationInput
         {
@@ -907,7 +1014,7 @@ public class SpectralFitPipeline
             DustLaw = LegacyConfig.Dust_Law switch { 1 => "allen", 2 => "prevot", _ => "calzetti" }
         };
 
-        var fitter = new IterativeSpectralFitter();
+        var fitter = _spectralFitter;
         var result = _dustService.DetermineAttenuation(dustInput, fitter);
         Ebv_Fit = (float)result.Ebv;
     }
@@ -919,32 +1026,19 @@ public class SpectralFitPipeline
     // Test CODE
     public float CalculateChiSqu(int model)
     {
-        // Get length of Data
-        var length = Restframe_Wavelength.Value.Length;
+        int length = Restframe_Wavelength.Length;
 
-        Restframe_Wavelength.SyncCPU();
+        Vector absDiff = (Restframe_Wavelength.GetAt(0) - Model_wavelength).AbsXIP();
+        int idx_closest = IndexOfMin(absDiff.RetrieveReadOnlySpan());
 
-        // Finds the closest start value
-        //float Closest_Start_Val = this.Model_wavelength.OrderBy(n => Math.Abs(this.Restframe_Wavelength.Value[0] - n)).First();
-
-        float Closest_Start_Val = (Restframe_Wavelength[0] - Model_wavelength).AbsXIP().Min();
-
-
-        // Gets Index of Closest Value
-        int idx_closest = Array.IndexOf(Model_wavelength.Pull(), Closest_Start_Val);
-
-        // Select the Model Flux for the Model
-        float[] model_flux = Model_flux.Value[((model * Model_flux.Columns) + idx_closest)..((model * Model_flux.Columns) + idx_closest + length)];
-
-        // Get the Length
-        //int length = this.Model_flux.Columns;
-        //float[] model_flux = this.Model_flux.Value[(model * length)..((model + 1) * length)];
+        ReadOnlySpan<float> modelFluxRow = Model_flux.RetrieveReadOnlySpan()
+            .Slice((model * Model_flux.Columns) + idx_closest, length);
+        ReadOnlySpan<float> flux = Flux.RetrieveReadOnlySpan();
+        ReadOnlySpan<float> error = Error.RetrieveReadOnlySpan();
 
         float sum = 0f;
-        for (int j = 0; j < model_flux.Length; j++)
-        {
-            sum += MathF.Pow(((model_flux[j] - Flux.Value[j]) / Error.Value[j]), 2f);
-        }
+        for (int j = 0; j < length; j++)
+            sum += MathF.Pow((modelFluxRow[j] - flux[j]) / error[j], 2f);
 
         return sum;
     }
@@ -952,93 +1046,100 @@ public class SpectralFitPipeline
     // will combine together SSP 50:50, 30:30:30, 25:25:25:25, 20:20:20:20:20
     private void GenerateInterpSSP()
     {
-        Flux.SyncCPU();
         int totlen = Model_flux.Length;
         int lenOneModel = Model_flux.Columns;
         int noModels = totlen / lenOneModel;
 
-        //noModels = 6;
-
-        var kernelWithStream = gpu.accelerator.LoadAutoGroupedKernel<Index1D, ArrayView<float>, ArrayView<float>, ArrayView<int>, int>(TrimDownFlux);
-
-        Vector trimmedflux = new(gpu, new float[MatchingWavelengthMapping.Length * noModels], MatchingWavelengthMapping.Length);
-        trimmedflux.IncrementLiveCount();
-        Model_flux.IncrementLiveCount();
-
-        MemoryBuffer1D<float, Stride1D.Dense>
-            buffer = trimmedflux.GetBuffer(),         // Output
-            buffer2 = Model_flux.GetBuffer();    //  Input
-        MemoryBuffer1D<int, Stride1D.Dense> buffer3 = gpu.accelerator.Allocate1D(MatchingWavelengthMapping); //  Input
-
-        kernelWithStream(gpu.accelerator.DefaultStream, noModels, buffer.View, buffer2.View, buffer3.View, lenOneModel);
-
-        gpu.accelerator.Synchronize();
-
-        Model_flux.DecrementLiveCount();
-        buffer3.Dispose();
-
-        // RUN 1
-
-        var kernelWithStream2 = gpu.accelerator.LoadAutoGroupedKernel<Index1D, ArrayView<float>, ArrayView<float>, ArrayView<float>, ArrayView<float>, int>(ChiCalcRun1);
-
-        Vector Chis = new(gpu, new float[noModels]);
-        Chis.IncrementLiveCount();
-
-        MemoryBuffer1D<float, Stride1D.Dense>
-            buffer_chis = Chis.GetBuffer(), //  Output
-            buffer_data_flux = Flux.GetBuffer(), //  Input
-            buffer_data_err = Error.GetBuffer(); //  Input
-
-        // Buffer_data_flux and buffer_data_err are too short, should be 3818 but got 3700
-        kernelWithStream2(gpu.accelerator.DefaultStream, noModels, buffer_chis.View, buffer_data_flux.View, buffer_data_err.View, buffer.View, Flux.Length);
-
-        gpu.accelerator.Synchronize();
-
-
-        // RUN 2
-
-        List<int> pairX = [], pairY = [];
-
-        //int NoG1SSPs = Enumerable.Range(1, noModels).Sum();
-        for (int j = noModels - 1, i = 0; j >= 1; j--, i++)
+        using (GpuScope.BeginReadOnly(Model_flux, Flux, Error))
         {
-            pairX.AddRange(Enumerable.Repeat(i, j));
-            pairY.AddRange(Enumerable.Range(i + 1, j));
+            var trimKernel = _pipelineKernels.TrimDownFlux;
+            Vector trimmedflux = new(gpu, new float[MatchingWavelengthMapping.Length * noModels], MatchingWavelengthMapping.Length);
+
+            using (GpuScope.Begin(trimmedflux, Model_flux))
+            using (MemoryBuffer1D<int, Stride1D.Dense> mappingBuffer = gpu.accelerator.Allocate1D(MatchingWavelengthMapping))
+            {
+                trimKernel(
+                    gpu.accelerator.DefaultStream,
+                    noModels,
+                    trimmedflux.GetBuffer().View,
+                    Model_flux.GetBuffer().View,
+                    mappingBuffer.View,
+                    lenOneModel);
+                gpu.accelerator.Synchronize();
+            }
+
+            var chiKernel1 = _pipelineKernels.ChiCalcRun1;
+            Vector Chis = new(gpu, new float[noModels]);
+
+            using (GpuScope.Begin(Chis, trimmedflux, Flux, Error))
+            {
+                chiKernel1(
+                    gpu.accelerator.DefaultStream,
+                    noModels,
+                    Chis.GetBuffer().View,
+                    Flux.GetBuffer().View,
+                    Error.GetBuffer().View,
+                    trimmedflux.GetBuffer().View,
+                    Flux.Length);
+                gpu.accelerator.Synchronize();
+            }
+
+            List<int> pairX = [], pairY = [];
+
+            for (int j = noModels - 1, i = 0; j >= 1; j--, i++)
+            {
+                pairX.AddRange(Enumerable.Repeat(i, j));
+                pairY.AddRange(Enumerable.Range(i + 1, j));
+            }
+
+            var chiKernel2 = _pipelineKernels.ChiCalcRun2;
+            Vector ChisG1 = new(gpu, new float[pairX.Count]);
+
+            using (GpuScope.Begin(ChisG1, trimmedflux, Flux, Error))
+            using (MemoryBuffer1D<int, Stride1D.Dense> bufferX = gpu.accelerator.Allocate1D(pairX.ToArray()))
+            using (MemoryBuffer1D<int, Stride1D.Dense> bufferY = gpu.accelerator.Allocate1D(pairY.ToArray()))
+            {
+                chiKernel2(
+                    gpu.accelerator.DefaultStream,
+                    pairX.Count,
+                    ChisG1.GetBuffer().View,
+                    Flux.GetBuffer().View,
+                    Error.GetBuffer().View,
+                    trimmedflux.GetBuffer().View,
+                    bufferX.View,
+                    bufferY.View,
+                    Flux.Length);
+                gpu.accelerator.Synchronize();
+            }
+
+            float minChi = Chis.MinX();
+            float minChiG1 = ChisG1.MinX();
+            ReadOnlySpan<float> chisG1Cpu = ChisG1.RetrieveReadOnlySpan();
+            int best_model = IndexOfMin(chisG1Cpu);
+            int bestSingle = IndexOfMin(Chis.RetrieveReadOnlySpan());
+
+            RecordData(bestSingle, minChi / Flux.Length, [pairX[best_model], pairY[best_model]], minChiG1 / Flux.Length);
         }
-
-        var kernelWithStream3 = gpu.accelerator.LoadAutoGroupedKernel<Index1D, ArrayView<float>, ArrayView<float>, ArrayView<float>, ArrayView<float>, ArrayView<int>, ArrayView<int>, int>(ChiCalcRun2);
-
-        Vector ChisG1 = new(gpu, new float[pairX.Count]);
-        ChisG1.IncrementLiveCount();
-
-        MemoryBuffer1D<float, Stride1D.Dense> buffer_chis2 = ChisG1.GetBuffer(); //  Output
-        MemoryBuffer1D<int, Stride1D.Dense>
-            buffer_X = gpu.accelerator.Allocate1D(pairX.ToArray()), //  Input
-            buffer_Y = gpu.accelerator.Allocate1D(pairY.ToArray()); //  Input
-
-        kernelWithStream3(gpu.accelerator.DefaultStream, pairX.Count, buffer_chis2.View, buffer_data_flux.View, buffer_data_err.View, buffer.View, buffer_X.View, buffer_Y.View, Flux.Length);
-
-        gpu.accelerator.Synchronize();
-
-        buffer_X.Dispose();
-        buffer_Y.Dispose();
-
-        //Console.WriteLine($"best model is {Array.IndexOf(Chis, Chis.Min())} with chi : {Chis.Min() / this.Flux.Value.Length}");
-
-        int best_model = Array.IndexOf(ChisG1.Pull(), ChisG1.Min());
-
-        //Console.WriteLine($"\n{this.Path[^25..].Replace(".fits","")} => SSP : {Chis.Min()/this.Flux.Value.Length} || 2 SSP : {ChisG1.Min()/this.Flux.Value.Length}");
-
-        //Console.WriteLine($"best model is {pairX[best_model]} : {pairY[best_model]} with a chi of : {ChisG1.Min() / this.Flux.Value.Length}, with {this.Flux.Value.Length} degrees of freedom");
-
-        RecordData(Array.IndexOf(Chis.Pull(), Chis.Min()), Chis.Min() / Flux.Length, new int[2] { pairX[best_model], pairY[best_model] }, ChisG1.Min() / Flux.Length);
-
-        trimmedflux.DecrementLiveCount();
-        Chis.DecrementLiveCount();
-        ChisG1.DecrementLiveCount();
     }
 
-    // Kernels
+    static int IndexOfMin(ReadOnlySpan<float> values)
+    {
+        int best = 0;
+        float min = values[0];
+        for (int i = 1; i < values.Length; i++)
+        {
+            if (values[i] < min)
+            {
+                min = values[i];
+                best = i;
+            }
+        }
+
+        return best;
+    }
+
+    // Custom ILGPU kernels: 2D model-bank χ² with per-branch clipped pixel lists (ChiCalcRun2).
+    // BAVCL lacks an equivalent fused gather+reduce over variable index pairs per model row.
     static void TrimDownFlux(Index1D index, ArrayView<float> Output, ArrayView<float> Fluxes, ArrayView<int> idxs, int fluxlen)
     {
         for (int i = 0; i < idxs.Length; i++)
@@ -1080,16 +1181,16 @@ public class SpectralFitPipeline
         File.WriteAllText(data, "");
 
         File.AppendAllText(data, "Restframe Wavelength of Data :\n");
-        File.AppendAllText(data, string.Join(" ", Restframe_Wavelength.Pull()));
+        File.AppendAllText(data, string.Join(" ", Restframe_Wavelength.RetrieveReadOnlySpan().ToArray()));
 
         File.AppendAllText(data, "\nFlux of Data : \n");
-        File.AppendAllText(data, string.Join(" ", Flux.Pull()));
+        File.AppendAllText(data, string.Join(" ", Flux.RetrieveReadOnlySpan().ToArray()));
 
         File.AppendAllText(data, "\nError of Data : \n");
-        File.AppendAllText(data, string.Join(" ", Error.Pull()));
+        File.AppendAllText(data, string.Join(" ", Error.RetrieveReadOnlySpan().ToArray()));
 
         File.AppendAllText(data, "\nModel Wavelengths : \n");
-        File.AppendAllText(data, string.Join(" ", Model_wavelength.Pull()));
+        File.AppendAllText(data, string.Join(" ", Model_wavelength.RetrieveReadOnlySpan().ToArray()));
 
 
         File.AppendAllText(data, "\n\nBest Single Model Fit : \n");
@@ -1113,8 +1214,8 @@ public class SpectralFitPipeline
         File.AppendAllText(data, $"\nGalaxy Mass Predicted : {0.5f * (((1f / Mass_factor[dualsspmodelnum[0]]) * 1e-17f) + ((1f / Mass_factor[dualsspmodelnum[1]]) * 1e-17f))} Msolar \n");
 
         float[] midptflux = Midpoint(
-            Model_flux.Value[(dualsspmodelnum[0] * Model_wavelength.Length)..((dualsspmodelnum[0] + 1) * Model_wavelength.Length)],
-            Model_flux.Value[(dualsspmodelnum[1] * Model_wavelength.Length)..((dualsspmodelnum[1] + 1) * Model_wavelength.Length)]);
+            Model_flux.GetRowAsArray(dualsspmodelnum[0]),
+            Model_flux.GetRowAsArray(dualsspmodelnum[1]));
 
         File.AppendAllText(data, "\nModel Flux : \n");
         File.AppendAllText(data, string.Join(" ", midptflux));
@@ -1136,60 +1237,52 @@ public class SpectralFitPipeline
     // EXPERIMENTAL CODE DONT USE YET
     public float[] CalculateChiSquVec()
     {
-        int length_Data = Restframe_Wavelength.Value.Length;
-        int length_Mod = Model_wavelength.Length;
+        ReadOnlySpan<float> modelWave = Model_wavelength.RetrieveReadOnlySpan();
+        ReadOnlySpan<float> dataWave = Restframe_Wavelength.RetrieveReadOnlySpan();
+        int length_Data = dataWave.Length;
+        int length_Mod = modelWave.Length;
         int models = length_Data / length_Mod;
 
-        float[] endVal = (from mwl in Model_wavelength.Value
-                          select Math.Abs(mwl - Restframe_Wavelength.Value[^1])).ToArray();
-
-        int endIdx = Array.IndexOf(endVal, endVal.Min()) + 1;
-
-
-        float[] startVal = (from mwl in Model_wavelength.Value[0..(endIdx + 1)]
-                            select Math.Abs(mwl - Restframe_Wavelength.Value[0])).ToArray();
-
-        int startIdx = Array.IndexOf(startVal, startVal.Min());
-
+        int endIdx = IndexOfMinAbsDiff(modelWave, dataWave[^1]) + 1;
+        int startIdx = IndexOfMinAbsDiff(modelWave[..(endIdx + 1)], dataWave[0]);
         int model_len = endIdx - startIdx;
 
-        List<float> new_mod_flux = [];
+        ReadOnlySpan<float> modelFlux = Model_flux.RetrieveReadOnlySpan();
+        List<float> new_mod_flux = new(models * model_len);
         for (int i = 0; i < models; i++)
         {
-            float[] vals = Model_flux.Value[(i * length_Mod + startIdx)..(i * length_Mod + endIdx)];
-            new_mod_flux.AddRange(vals);
+            int rowStart = i * length_Mod + startIdx;
+            for (int j = 0; j < model_len; j++)
+                new_mod_flux.Add(modelFlux[rowStart + j]);
         }
-
 
         var kernelWithStream = gpu.accelerator.LoadAutoGroupedKernel<Index1D, ArrayView<float>, ArrayView<float>, ArrayView<float>, ArrayView<float>, int>(CalcChiKernel);
 
         Vector output = new(gpu, new float[new_mod_flux.Count]);
-        output.IncrementLiveCount();
-
         Vector new_mod_flux_vec = new(gpu, new_mod_flux.ToArray());
-        new_mod_flux_vec.IncrementLiveCount();
 
-        MemoryBuffer1D<float, Stride1D.Dense>
-            buffer = output.GetBuffer(), // Output
-            buffer2 = new_mod_flux_vec.GetBuffer(), // Input
-            fluxBuf = Flux.GetBuffer(), // Input
-            errorBuf = Error.GetBuffer(); // Input
+        using (GpuScope.Begin(output, new_mod_flux_vec, Flux, Error))
+        {
+            MemoryBuffer1D<float, Stride1D.Dense>
+                buffer = output.GetBuffer(),
+                buffer2 = new_mod_flux_vec.GetBuffer(),
+                fluxBuf = Flux.GetBuffer(),
+                errorBuf = Error.GetBuffer();
 
+            kernelWithStream(gpu.accelerator.DefaultStream, buffer.IntExtent, buffer.View, buffer2.View, fluxBuf.View, errorBuf.View, model_len);
+            gpu.accelerator.Synchronize();
+        }
 
-        kernelWithStream(gpu.accelerator.DefaultStream, buffer.IntExtent, buffer.View, buffer2.View, fluxBuf.View, errorBuf.View, model_len);
-
-        gpu.accelerator.Synchronize();
-
-        output.SyncCPU();
-
+        ReadOnlySpan<float> chiFlat = output.RetrieveReadOnlySpan();
         float[] chis = new float[models];
         for (int i = 0; i < models; i++)
         {
-            chis[i] = output.GetRowAsArray(i, true).Sum();
+            float sum = 0f;
+            int rowStart = i * model_len;
+            for (int j = 0; j < model_len; j++)
+                sum += chiFlat[rowStart + j];
+            chis[i] = sum;
         }
-
-        output.DecrementLiveCount();
-        new_mod_flux_vec.DecrementLiveCount();
 
         return chis;
     }

@@ -1,20 +1,28 @@
 #blazor-error-ui {
     color-scheme: light only;
-    background: lightyellow;
+    background: var(--falcon-error-soft, #fef2f2);
+    color: var(--falcon-error, #c93b3b);
     bottom: 0;
-    box-shadow: 0 -1px 2px rgba(0, 0, 0, 0.2);
+    box-shadow: 0 -4px 16px rgba(21, 34, 56, 0.1);
     box-sizing: border-box;
     display: none;
     left: 0;
-    padding: 0.6rem 1.25rem 0.7rem 1.25rem;
+    padding: 0.75rem 1.25rem;
     position: fixed;
     width: 100%;
     z-index: 1000;
+    font-size: 0.875rem;
 }
 
-    #blazor-error-ui .dismiss {
-        cursor: pointer;
-        position: absolute;
-        right: 0.75rem;
-        top: 0.5rem;
-    }
+#blazor-error-ui .dismiss {
+    cursor: pointer;
+    position: absolute;
+    right: 0.75rem;
+    top: 0.5rem;
+}
+
+#blazor-error-ui .reload {
+    color: var(--falcon-primary, #1e4d8c);
+    font-weight: 600;
+    margin-left: 0.5rem;
+}

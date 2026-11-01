@@ -9,8 +9,8 @@ Track APIs that would let FALCON delegate more work to BAVCL.
 | Medium | Sigma-clip reduction on GPU | Iterative fitter residual clipping |
 | Medium | GPU median / percentile | `NormaliseSpec` hot path |
 | Medium | GPU optimisation (PSO / grid search) | E(B-V) grid search |
-| Low | FITS I/O | CSharpFITS + Python scripts |
-| Low | HDF5 I/O | HDF5-CSharp + Python scripts |
+| Low | FITS I/O | CFITS 0.1.0 (FALCON integration) |
+| Low | HDF5 I/O | No runtime HDF5 dependency; legacy conversion scripts only |
 
 ## Notes
 

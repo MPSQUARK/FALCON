@@ -1,0 +1,10 @@
+{
+  "min_chi_squared": 0,
+  "solution_count": 25,
+  "best_weights": [
+    1,
+    0
+  ],
+  "converged": true,
+  "iteration_count": 1
+}
