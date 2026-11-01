@@ -1,99 +1,203 @@
-#   MachineLearningSpectralFittingCode
-#   Developed by Marcel Pawelczyk
-#
-#   PROGRAM STILL IN DEVELOPMENT
-# 
-#   BY USING THIS 'SOFTWARE' 'YOU' AGREE TO THE 'TERMS AND CONDITIONS'
-#
-#   'SOFTWARE' intended for personal, educational and/or academic use FREE of charge
+FALCON Source-Available Licence v1.0
+Effective: 1 August 2026
 
-########################## TERMS AND CONDITIONS #############################
- 
-THE 'SOFTWARE' IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
-FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE CONTRIBUTORS
-OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
-WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
-CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS WITH THE SOFTWARE.  
+FALCON (GPU-accelerated stellar population fitting software)
+Copyright (c) Marcel Pawelczyk
 
-#
-#      - 'YOU' do NOT have the permission to sell, lisence, sublisence or 
-#        in any other way benefit financially from this 'software'. This 
-#        'SOFTWARE' is to remain free of charge for anyone who wishes to use it.
-#
-#      - 'YOU' do NOT have the permission to redistribute, this 'SOFTWARE', this
-#         includes but is not limited to the 'SOFTWARE' as a whole, any part of 
-#         the 'SOFTWARE', the files or code contained in the 'SOFTWARE' or 
-#         any version of the 'SOFTWARE' modified by 'YOU'.
-#
-#      - 'YOU' are granted the permission/s to download, copy, modify and 
-#        alter the 'software' in any way FOR 'personal/educational/academic use', 
-#        ONLY IF you do NOT distribute the downloaded, copied or in any other 
-#        way shape or form modified version of this 'software' AND IF any 
-#        modifications made DO NOT violate the terms of use OR the 
-#        copyright lisence of any 'third party software' 
-#        contained within this 'software'.
-#
-#      - In any situation when this 'SOFTWARE' is used in another product,
-#        program, software or equivalent, or in research the appropriate 
-#        reference/acreditation/citation must be performed in an easily accessible 
-#        and visible location appropriate to the situation, for example in the 
-#        bibliography at the end of an article, or in the credits of a 
-#        program/software or equivalent in a font size equivalent to that 
-#        of 11 in Calibri.
-#    
+FALCON is currently under active development.
 
-##########################     TERMINOLOGY      #############################   
-   
-#     - 'SOFTWARE' - refers to all the folders, files, source code, and
-#                    everything else contained within this repository
-#
-#     - 'YOU'      - refers to the person/s, who are using or have 
-#                    used this 'software', this includes individuals,
-#                    company and/or organisation.
-#
-#     - 'TERMS AND CONDITIONS' - refers to the terms 'you' agree to when
-#                                using this 'software'
-#
-#     - 'THIRD PARTY SOFTWARE' - refers to any software incorporated into this
-#                                'SOFTWARE' which has not been developed by the
-#                                contributors of this 'software'
-#
+By using, copying, modifying, or distributing this software, you agree to the
+terms of this licence.
 
+================================================================================
+1. Summary
+================================================================================
 
-##############     Third Party Terms Of Use & License's     ################# 
+FALCON is source-available and intentionally permissive. This licence permits
+the vast majority of personal, academic, commercial, research, and software-
+development uses. A small number of specific restrictions exist, including but
+not limited to protection from direct commercial competition in its niche,
+ingestion of FALCON Implementation Materials as AI/ML training data, and clearly
+defined prohibited harmful uses.
 
-********************************************************************************
-                                  ILGPU License
-********************************************************************************
-University of Illinois/NCSA Open Source License
-Copyright (c) 2016-2020 Marcel Koester
-All rights reserved.
+The training-data restriction is intended to prevent third parties from using
+Implementation Materials as training input to create systems that can reproduce
+or otherwise exploit the copyrighted implementation. It does not restrict
+ordinary use of FALCON as software in AI/ML systems or ordinary interactive use
+of AI-assisted development tools.
 
-Developed by:           Marcel Koester (m4rs@m4rs.net)
-                        www.ilgpu.net
+================================================================================
+2. Definitions
+================================================================================
 
-Permission is hereby granted, free of charge, to any person obtaining a copy of
-this software and associated documentation files (the "Software"), to deal with
-the Software without restriction, including without limitation the rights to
-use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
-the Software, and to permit persons to whom the Software is furnished to do so,
-subject to the following conditions:
+"Software" means FALCON: all folders, files, source code, documentation, and
+other materials in this repository, and any modified versions you create under
+this licence.
 
-    * Redistributions of source code must retain the above copyright notice,
-      this list of conditions and the following disclaimers.
+"You" means any individual, company, organisation, or other entity using the
+Software.
 
-    * Redistributions in binary form must reproduce the above copyright notice,
-      this list of conditions and the following disclaimers in the documentation
-      and/or other materials provided with the distribution.
+"Implementation Materials" means the copyright-protected expressive forms of
+FALCON that embody its implementation, including but not limited to source code,
+object code, binaries, and documentation — whether distributed in human-readable
+or compiled form. This does not include the output of running FALCON (for example,
+computed numerical results) or your own application code that merely calls FALCON
+APIs.
 
-    * Neither the names of ILGPU, Marcel Koester, nor the names of its
-      contributors may be used to endorse or promote products derived from this
-      Software without specific prior written permission.
+"Attribution" means credit given to FALCON and its author in a manner that is
+clear, legible, easily findable by a reasonable recipient, and appropriate to
+the context in which the Software is used.
+
+"Competing Product" means a software library, framework, or application whose
+primary purpose is to provide a competing stellar-population fitting or spectral
+analysis implementation — including forks, renames, or derivatives of FALCON
+intended to serve that role. This does not include application software that
+merely depends on FALCON as a library.
+
+================================================================================
+3. Grant of Licence
+================================================================================
+
+Subject to the terms below, Marcel Pawelczyk grants you a non-exclusive,
+royalty-free licence to use, copy, modify, and redistribute the Software (in
+source or binary form) for lawful purposes.
+
+Modified versions of the Software remain subject to this licence unless otherwise
+permitted by applicable law. Any redistributed modified version must continue to
+comply with this licence.
+
+================================================================================
+4. Attribution
+================================================================================
+
+Attribution is not required for personal, hobby, or educational use.
+
+Attribution is required when you use the Software in:
+
+  (a) published research or academic work intended for publication; or
+  (b) commercial or professional products or services.
+
+When attribution is required, it must be clear, legible, easily findable, and
+appropriate to the medium. It must identify FALCON, Marcel Pawelczyk, and the
+Software's source repository (as published in this repository). Attribution may
+be provided either within the product or within accompanying documentation.
+
+Appropriate placement includes, but is not limited to:
+
+  - A Licences, Acknowledgements, or Third-party notices section in software
+    (for example, an About dialog, Info tab, or settings screen)
+  - A References or Bibliography section in published research, following
+    accepted citation standards for the field
+  - A project README, documentation, or credits screen where third-party
+    dependencies are listed
+  - In-product attribution visible to end users where other libraries are
+    credited
+
+Attribution must not be hidden, obscured, or buried in unrelated material.
+
+================================================================================
+5. Permitted AI and Machine-Learning Use
+================================================================================
+
+Use of FALCON as software in connection with the development, training, operation,
+or support of an artificial intelligence or machine-learning system is permitted.
+This includes, but is not limited to, using FALCON to accelerate neural-network
+training or inference and using AI-assisted development tools when developing
+software that uses FALCON.
+
+Use of FALCON as part of an AI/ML system does not constitute use of FALCON's
+Implementation Materials as training data.
+
+================================================================================
+6. Source-Code Training Restriction
+================================================================================
+
+You may not use the Implementation Materials of FALCON, in whole or in part, as
+training, pre-training, fine-tuning, or similar training data for an artificial
+intelligence or machine-learning model. This includes, but is not limited to,
+corpus ingestion, dataset construction, or using Implementation Materials to
+train or adapt model parameters.
+
+This restriction applies to ingestion of FALCON's Implementation Materials as
+training material and does not prohibit ordinary use of FALCON in AI/ML software,
+nor ordinary interactive use of AI tools to assist with software development.
+
+================================================================================
+7. No Competing Products
+================================================================================
+
+You may not create, distribute, sublicense, or sell a Competing Product based
+on the Software or that incorporates the Software for that purpose.
+
+This restriction applies regardless of whether your use is personal, academic,
+commercial, or otherwise permitted under this licence. Application software that
+uses FALCON as a dependency (including but not limited to scientific simulations
+or neural-network applications) is not a Competing Product.
+
+================================================================================
+8. Prohibited Uses
+================================================================================
+
+You may not use the Software for any unlawful purpose.
+
+You may not use the Software to facilitate unlawful activity or the following
+prohibited harmful activities, including but not limited to:
+
+  - Password cracking or credential-stuffing attacks
+  - Hacking or unauthorised access to systems (authorized security testing
+    conducted with the permission of the system or asset owner is excluded from
+    this prohibition)
+  - Software intended to break encryption where the outcome is used maliciously
+    to obtain monetary gain through fraud, theft, or similar criminal activity
+
+This list is illustrative and is not exhaustive.
+
+================================================================================
+9. Redistribution
+================================================================================
+
+You may redistribute the Software (in source or binary form), provided that
+you include this licence (or a clear reference to it), preserve applicable
+copyright notices, provide attribution where required under Section 4, and comply
+with third-party licence obligations.
+
+================================================================================
+10. Third-Party Software
+================================================================================
+
+The Software incorporates third-party components governed by their own licence
+terms. See THIRD_PARTY_LICENSES.md. Any modifications you make must not violate
+those third-party licences.
+
+================================================================================
+11. Licence Modifications
+================================================================================
+
+This licence may be amended at any time without prior notice. The version
+published in this repository at the time of your use constitutes the applicable
+terms. Your continued use of the Software after any modification constitutes
+acceptance of the revised licence.
+
+================================================================================
+12. Clarifications
+================================================================================
+
+If you are unsure whether a particular use case is permitted, you may open an
+issue in this repository describing what you would like to do. The copyright
+holder will endeavour to clarify the intended application of this licence as
+soon as reasonably possible.
+
+Any clarification provided in an issue is an explanation of the licence's intent
+and does not replace or modify this licence.
+
+================================================================================
+13. Disclaimer
+================================================================================
 
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
-FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE CONTRIBUTORS
-OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
-WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
-CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS WITH THE SOFTWARE.
+FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE COPYRIGHT
+HOLDER BE LIABLE FOR ANY CLAIM, DAMAGES, OR OTHER LIABILITY, WHETHER IN AN ACTION
+OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
+SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
