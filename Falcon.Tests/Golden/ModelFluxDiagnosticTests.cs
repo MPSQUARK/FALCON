@@ -47,14 +47,14 @@ public class ModelFluxDiagnosticTests
         string[] candidates =
         [
             Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..",
-                "assets", "sample-data", "spec-0266-51630-0016.fits")),
-            Path.Combine(AppContext.BaseDirectory, "assets", "sample-data", "spec-0266-51630-0016.fits"),
+                "assets", "SampleData", "spec-0266-51630-0016.fits")),
+            Path.Combine(AppContext.BaseDirectory, "assets", "SampleData", "spec-0266-51630-0016.fits"),
         ];
         return candidates.First(File.Exists);
     }
 
     static string ResolveMaStarFits() =>
-        Path.Combine(RepoRoot(), "assets", "stellar-population-models", "MaStar_SSP_v0.2.fits.gz");
+        Path.Combine(RepoRoot(), "Assets", "StellarPopulationModels", "MaStar_SSP_v0.2.fits.gz");
 
     static string RepoRoot() =>
         Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", ".."));

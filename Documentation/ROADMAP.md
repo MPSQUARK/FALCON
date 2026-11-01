@@ -30,6 +30,6 @@ Stubs remain until integration golden tests pass with the real MaStar FITS asset
 ## M8 — Upstream firefly diff (deferred)
 
 ## Testing
-- **177+ unit/golden tests** (`dotnet test tests/Falcon.Tests`)
+- **177+ unit/golden tests** (`dotnet test Falcon.Tests`)
 - CI: all CPU + golden JSON tests
 - Integration: `dotnet test --filter Category=Integration` (requires MaStar FITS + GPU)

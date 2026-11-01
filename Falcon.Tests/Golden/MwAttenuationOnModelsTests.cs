@@ -16,7 +16,7 @@ public class MwAttenuationOnModelsTests
     public void MwUnred_OnDowngradedScale_DoesNotZeroFlux()
     {
         string basePath = RepoRoot();
-        string fits = Path.Combine(basePath, "assets", "sample-data", "spec-0266-51630-0016.fits");
+        string fits = Path.Combine(basePath, "assets", "SampleData", "spec-0266-51630-0016.fits");
         if (!File.Exists(fits)) return;
 
         var gpu = FalconGpuHost.Create();
@@ -49,7 +49,7 @@ public class MwAttenuationOnModelsTests
     public void MwCorrection_On0182_DoesNotDestroyModelFlux()
     {
         string basePath = RepoRoot();
-        string fits = Path.Combine(basePath, "assets", "sample-data", "spec-0266-51630-0182.fits");
+        string fits = Path.Combine(basePath, "assets", "SampleData", "spec-0266-51630-0182.fits");
         if (!File.Exists(fits)) return;
 
         var gpu = FalconGpuHost.Create();

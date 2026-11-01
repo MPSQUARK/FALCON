@@ -36,7 +36,7 @@
                        @bind="ConfigPath"
                        @bind:event="oninput"
                        @onblur="OnConfigPathChanged"
-                       placeholder="configs/example.yaml" />
+                       placeholder="Configs/example.yaml" />
                 <p class="drop-hint">Drag a <code>.yaml</code> here, type a path, or click to browse</p>
             </div>
         </div>
@@ -187,7 +187,7 @@ else if (!LoadingList && !string.IsNullOrEmpty(ConfigPath) && string.IsNullOrEmp
 }
 
 @code {
-    string ConfigPath { get; set; } = "configs/example.yaml";
+    string ConfigPath { get; set; } = "Configs/example.yaml";
     string Status { get; set; } = "";
     string ListError { get; set; } = "";
     bool Running { get; set; }

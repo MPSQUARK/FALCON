@@ -50,15 +50,15 @@ public class PipelineOrchestrationTests
 public class EndToEndGoldenTests
 {
     private static bool HasMaStarModels =>
-        File.Exists(Path.Combine(AppContext.BaseDirectory, "assets", "stellar-population-models", "MaStar_SSP_v0.2.fits.gz"))
-        || File.Exists(Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "assets", "stellar-population-models", "MaStar_SSP_v0.2.fits.gz")));
+        File.Exists(Path.Combine(AppContext.BaseDirectory, "Assets", "StellarPopulationModels", "MaStar_SSP_v0.2.fits.gz"))
+        || File.Exists(Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "Assets", "StellarPopulationModels", "MaStar_SSP_v0.2.fits.gz")));
 
     [Fact]
     public void ExampleDatFile_ExistsInRepo()
     {
-        string path = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "assets", "sample-data", "spec-0266-51602-0001.dat"));
+        string path = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "assets", "SampleData", "spec-0266-51602-0001.dat"));
         if (!File.Exists(path))
-            path = Path.Combine(AppContext.BaseDirectory, "assets", "sample-data", "spec-0266-51602-0001.dat");
+            path = Path.Combine(AppContext.BaseDirectory, "assets", "SampleData", "spec-0266-51602-0001.dat");
         File.Exists(path).Should().BeTrue();
     }
 

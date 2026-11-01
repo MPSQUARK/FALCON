@@ -6,7 +6,7 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
 FIREFLY = REPO.parent / "firefly"
-OUT = REPO / "tests" / "Falcon.Tests" / "TestData"
+OUT = REPO / "Falcon.Tests" / "TestData"
 
 
 def main():
@@ -30,7 +30,7 @@ def main():
             "golden_e2e.json",
             "golden_legacy_gpu.json",
         ],
-        "spectrum": "assets/sample-data/spec-0266-51602-0001.dat",
+        "spectrum": "Assets/SampleData/spec-0266-51602-0001.dat",
     }
     (OUT / "golden_manifest.json").write_text(json.dumps(manifest, indent=2))
     print(f"Wrote golden fixtures to {OUT}")

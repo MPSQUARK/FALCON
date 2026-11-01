@@ -1,5 +1,5 @@
 input:
-  spectrum_path: assets/sample-data
+  spectrum_path: Assets/SampleData
   input_glob: "*.fits"
   redshift: 0.021275453
   ra: 145.89219
@@ -51,7 +51,7 @@ masking:
     - 4861.32
 
 paths:
-  stellar_population_models: assets/stellar-population-models
-  dust_maps: assets/dust-maps
+  stellar_population_models: Assets/StellarPopulationModels
+  dust_maps: Assets/DustMaps
   output: output
-  mass_loss_tables: assets/mass-loss
+  mass_loss_tables: Assets/MassLoss

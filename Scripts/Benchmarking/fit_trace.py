@@ -4,7 +4,7 @@
 Set FIREFLY_FIT_TRACE=1 (or FALCON_FIT_TRACE=1) to enable.
 Output format: FIT_TRACE\\t{stage}\\t{json}
 
-Used by Scripts/compare_fit_traces.py to diff FALCON vs firefly checkpoints.
+Used by Scripts/Benchmarking/compare_fit_traces.py to diff FALCON vs firefly checkpoints.
 """
 from __future__ import annotations
 
@@ -67,3 +67,4 @@ def model_grid_stats(models: np.ndarray, prefix: str = "model0") -> dict[str, An
     out = stats(prefix, models[0])
     out[f"{prefix}_n_models"] = int(models.shape[0])
     return out
+

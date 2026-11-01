@@ -7,14 +7,14 @@ public class YamlConfigurationTests
 {
     private static string ExampleYamlPath()
     {
-        var dir = AppContext.BaseDirectory;
-        for (int i = 0; i < 8; i++)
+        var dir = new DirectoryInfo(AppContext.BaseDirectory);
+        while (dir is not null)
         {
-            var candidate = Path.GetFullPath(Path.Combine(dir, "..", "..", "..", "..", "..", "configs", "example.yaml"));
+            var candidate = Path.Combine(dir.FullName, "Configs", "example.yaml");
             if (File.Exists(candidate)) return candidate;
-            dir = Path.GetDirectoryName(dir)!;
+            dir = dir.Parent;
         }
-        throw new FileNotFoundException("configs/example.yaml not found relative to test output");
+        throw new FileNotFoundException("Configs/example.yaml not found relative to test output");
     }
 
     [Fact]

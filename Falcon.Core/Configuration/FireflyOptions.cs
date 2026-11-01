@@ -12,7 +12,7 @@ public sealed class FireflyOptions
 
 public sealed class InputOptions
 {
-    public string SpectrumPath { get; set; } = "assets/sample-data";
+    public string SpectrumPath { get; set; } = "Assets/SampleData";
     public string InputGlob { get; set; } = "*.fits";
     public float Redshift { get; set; } = 0.021275453f;
     public float Ra { get; set; } = 145.89219f;
@@ -74,8 +74,8 @@ public sealed class MaskingOptions
 
 public sealed class PathOptions
 {
-    public string StellarPopulationModels { get; set; } = "assets/stellar-population-models";
-    public string DustMaps { get; set; } = "assets/dust-maps";
+    public string StellarPopulationModels { get; set; } = "Assets/StellarPopulationModels";
+    public string DustMaps { get; set; } = "Assets/DustMaps";
     public string Output { get; set; } = "output";
-    public string MassLossTables { get; set; } = "assets/mass-loss";
+    public string MassLossTables { get; set; } = "Assets/MassLoss";
 }

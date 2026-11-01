@@ -58,7 +58,7 @@
 </div>
 
 @code {
-    string ConfigPath { get; set; } = "configs/example.yaml";
+    string ConfigPath { get; set; } = "Configs/example.yaml";
     string EditorText { get; set; } = "";
     string SavedText { get; set; } = "";
     string ResolvedPath { get; set; } = "";
@@ -132,7 +132,7 @@
 
     static string DefaultYaml() => """
         input:
-          spectrum_path: assets/sample-data
+          spectrum_path: Assets/SampleData
           input_glob: "*.fits"
           redshift: 0.021275453
           write_results: true
@@ -153,8 +153,8 @@
           dust_law: calzetti
 
         paths:
-          stellar_population_models: assets/stellar-population-models
-          dust_maps: assets/dust-maps
+          stellar_population_models: Assets/StellarPopulationModels
+          dust_maps: Assets/DustMaps
           output: output
         """;
 }

@@ -60,7 +60,7 @@ public class FluxGridLoadTests
     public void Get_Model_WithDowngrade_NoMw_ProducesNonZeroBank()
     {
         string basePath = RepoRoot();
-        string fits = Path.Combine(basePath, "assets", "sample-data", "spec-0266-51630-0016.fits");
+        string fits = Path.Combine(basePath, "assets", "SampleData", "spec-0266-51630-0016.fits");
         if (!File.Exists(fits)) return;
 
         var gpu = FalconGpuHost.Create();
@@ -84,7 +84,7 @@ public class FluxGridLoadTests
     public void Get_Model_WithoutDowngrade_ProducesNonZeroBank()
     {
         string basePath = RepoRoot();
-        string fits = Path.Combine(basePath, "assets", "sample-data", "spec-0266-51630-0016.fits");
+        string fits = Path.Combine(basePath, "assets", "SampleData", "spec-0266-51630-0016.fits");
         if (!File.Exists(fits) || !File.Exists(ResolveMaStarFits()))
             return;
 
@@ -107,7 +107,7 @@ public class FluxGridLoadTests
     }
 
     static string ResolveMaStarFits() =>
-        Path.Combine(RepoRoot(), "assets", "stellar-population-models", "MaStar_SSP_v0.2.fits.gz");
+        Path.Combine(RepoRoot(), "Assets", "StellarPopulationModels", "MaStar_SSP_v0.2.fits.gz");
 
     static string RepoRoot() =>
         Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", ".."));

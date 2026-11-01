@@ -2,8 +2,8 @@
 """Compare FIT_TRACE checkpoint files from FALCON and firefly.
 
 Usage:
-  python Scripts/compare_fit_traces.py falcon.trace firefly.trace
-  python Scripts/compare_fit_traces.py --rtol 0.05 falcon.trace firefly.trace
+  python Scripts/Benchmarking/compare_fit_traces.py falcon.trace firefly.trace
+  python Scripts/Benchmarking/compare_fit_traces.py --rtol 0.05 falcon.trace firefly.trace
 
 Parses lines: FIT_TRACE\\t{stage}\\t{json}
 Reports the first stage where numeric fields diverge beyond tolerance.
@@ -139,3 +139,4 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+

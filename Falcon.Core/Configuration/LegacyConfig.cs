@@ -143,9 +143,9 @@ public static class LegacyConfig
     public static void Setup(GPU gpu, FireflyOptions? options = null)
     {
         string modelsDir = Environment.GetEnvironmentVariable("FALCON_MODELS")
-            ?? Path.Combine(PathOfProgram, "assets", "stellar-population-models");
+            ?? Path.Combine(PathOfProgram, "Assets", "StellarPopulationModels");
         string dustDir = Environment.GetEnvironmentVariable("FALCON_DUST")
-            ?? Path.Combine(PathOfProgram, "assets", "dust-maps");
+            ?? Path.Combine(PathOfProgram, "Assets", "DustMaps");
         if (options is not null)
         {
             modelsDir = Path.Combine(PathOfProgram, options.Paths.StellarPopulationModels.Replace('/', Path.DirectorySeparatorChar));

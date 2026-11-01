@@ -1,9 +1,9 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <RootNamespace>Falcon.Cli</RootNamespace>
-    <AssemblyName>falcon</AssemblyName>
+    <AssemblyName>Falcon.Cli</AssemblyName>
   </PropertyGroup>
 
   <ItemGroup>
@@ -23,12 +23,12 @@
     <None Update="appsettings.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Include="..\..\configs\example.yaml">
-      <Link>configs\example.yaml</Link>
+    <None Include="..\Configs\example.yaml">
+      <Link>Configs\example.yaml</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Include="..\..\assets\**\*.*">
-      <Link>assets\%(RecursiveDir)%(Filename)%(Extension)</Link>
+    <None Include="..\Assets\**\*.*">
+      <Link>Assets\%(RecursiveDir)%(Filename)%(Extension)</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
   </ItemGroup>

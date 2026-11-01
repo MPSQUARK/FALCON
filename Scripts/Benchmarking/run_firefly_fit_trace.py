@@ -3,8 +3,8 @@
 
 Usage (from firefly repo):
   set FIREFLY_FIT_TRACE=1
-  set STELLARPOPMODELS_DIR=..\\FALCON\\assets\\stellar-population-models
-  python ..\\FALCON\\Scripts\\run_firefly_fit_trace.py ..\\FALCON\\assets\\sample-data\\spec-0266-51630-0016.fits
+  set STELLARPOPMODELS_DIR=..\\FALCON\\Assets\\StellarPopulationModels
+  python ..\\FALCON\\Scripts\\run_firefly_fit_trace.py ..\\FALCON\\Assets\\SampleData\\spec-0266-51630-0016.fits
 
 Requires MaStar_SSP_v0.2.fits.gz under STELLARPOPMODELS_DIR (firefly native format).
 """
@@ -24,7 +24,7 @@ from fit_trace import emit, stats  # noqa: E402
 
 os.environ.setdefault("FF_DIR", os.getcwd())
 if "STELLARPOPMODELS_DIR" not in os.environ:
-    falcon_assets = os.path.normpath(os.path.join(_script_dir, "..", "FALCON", "assets", "stellar-population-models"))
+    falcon_assets = os.path.normpath(os.path.join(_script_dir, "..", "Assets", "StellarPopulationModels"))
     if os.path.isdir(falcon_assets):
         os.environ["STELLARPOPMODELS_DIR"] = falcon_assets
 

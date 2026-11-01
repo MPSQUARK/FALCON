@@ -15,16 +15,16 @@
   </ItemGroup>
 
   <ItemGroup>
-    <None Include="..\..\configs\example.yaml">
-      <Link>configs\example.yaml</Link>
+    <None Include="..\Configs\example.yaml">
+      <Link>Configs\example.yaml</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Include="..\..\assets\**\*.*">
-      <Link>assets\%(RecursiveDir)%(Filename)%(Extension)</Link>
+    <None Include="..\Assets\**\*.*">
+      <Link>Assets\%(RecursiveDir)%(Filename)%(Extension)</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Include="..\..\Scripts\plot_results.py">
-      <Link>Scripts\plot_results.py</Link>
+    <None Include="..\Scripts\Analysis\plot_results.py">
+      <Link>Scripts\Analysis\plot_results.py</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
   </ItemGroup>

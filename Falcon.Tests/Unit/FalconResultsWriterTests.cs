@@ -15,7 +15,7 @@ public class FalconResultsWriterTests
 
         var output = new FireflyFitOutput
         {
-            SourceFile = "assets/spec.fits",
+            SourceFile = "Assets/spec.fits",
             Converged = true,
             BestEbv = 0.05,
             MinChiSquared = 10,

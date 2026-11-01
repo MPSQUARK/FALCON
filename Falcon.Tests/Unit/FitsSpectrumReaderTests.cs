@@ -25,13 +25,15 @@ public class FitsSpectrumReaderTests
 
     static string ResolveSampleFits(string fileName)
     {
-        var candidates = new[]
+        var directory = new DirectoryInfo(AppContext.BaseDirectory);
+        while (directory is not null)
         {
-            Path.Combine(AppContext.BaseDirectory, "assets", "sample-data", fileName),
-            Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "assets", "sample-data", fileName)),
-        };
-        return candidates.FirstOrDefault(File.Exists)
-            ?? throw new FileNotFoundException($"Sample FITS not found: {fileName}");
+            var candidate = Path.Combine(directory.FullName, "Assets", "SampleData", fileName);
+            if (File.Exists(candidate)) return candidate;
+            directory = directory.Parent;
+        }
+
+        throw new FileNotFoundException($"Sample FITS not found: {fileName}");
     }
 
     static string SampleFitsPath() => ResolveSampleFits("spec-0266-51630-0016.fits");

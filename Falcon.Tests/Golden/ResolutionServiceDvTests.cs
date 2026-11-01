@@ -53,7 +53,7 @@ public class ResolutionServiceDvTests
 
     static string ResolveMaStarFits() =>
         Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..",
-            "assets", "stellar-population-models", "MaStar_SSP_v0.2.fits.gz"));
+            "Assets", "StellarPopulationModels", "MaStar_SSP_v0.2.fits.gz"));
 
     static string RepoRoot() =>
         Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", ".."));

@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <RootNamespace>Falcon.Tests</RootNamespace>
@@ -14,7 +14,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\Falcon.Core\Falcon.Core.csproj" />
+    <ProjectReference Include="..\Falcon.Core\Falcon.Core.csproj" />
   </ItemGroup>
 
   <ItemGroup>
@@ -24,8 +24,8 @@
     <None Update="TestData\**\*">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Include="..\..\assets\sample-data\spec-0266-51630-0016.fits">
-      <Link>assets\sample-data\spec-0266-51630-0016.fits</Link>
+    <None Include="..\Assets\SampleData\spec-0266-51630-0016.fits">
+      <Link>Assets\SampleData\spec-0266-51630-0016.fits</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
   </ItemGroup>

@@ -12,14 +12,14 @@ FALCON is a C# GPU-accelerated port of the [firefly](https://github.com/jjrbotte
 ## Solution layout
 
 ```
-src/Falcon.Core/     Domain logic, GPU kernels, firefly algorithm ports
-src/Falcon.Cli/      Hosted console entry (`falcon` executable)
-src/Falcon.UI/       Blazor Web App (config, run, plot viewer)
-tests/Falcon.Tests/  xUnit component + golden tests
-configs/             YAML firefly-equivalent configuration
-assets/              Runtime data (models, dust maps, sample spectra)
-scripts/             Python prep/post tools (manual invocation)
-docs/                Design, roadmap, BAVCL feature requests
+Falcon.Core/     Domain logic, GPU kernels, firefly algorithm ports
+Falcon.Cli/      Hosted console entry (`falcon` executable)
+Falcon.UI/       Blazor Web App (config, run, plot viewer)
+Falcon.Tests/  xUnit component + golden tests
+Configs/             YAML firefly-equivalent configuration
+Assets/              Runtime data (models, dust maps, sample spectra)
+Scripts/             Python prep/post tools (manual invocation)
+Documentation/                Design, roadmap, BAVCL feature requests
 ```
 
 ## Architecture
@@ -38,21 +38,20 @@ Pipeline flow:
 
 ## Configuration
 
-- **YAML** (`configs/*.yaml`) — all firefly inline options + data paths
+- **YAML** (`Configs/*.yaml`) — all firefly inline options + data paths
 - **appsettings.json** — logging only (Microsoft.Extensions.Logging)
 
 ## Python bridge
 
-Scripts in `scripts/` are run manually:
+Scripts in `Scripts/` are run manually:
 
-- `convert_input.py` — optional FITS → FALCON-native formats
-- `convert_models.py` — model asset inspection/conversion helpers
-- `convert_output.py` — results → firefly-compatible FITS
-- `plot_results.py` — visualisation for UI
+- `Scripts/Conversion/convert_input.py` — optional FITS → FALCON-native formats
+- `Scripts/Conversion/convert_output.py` — results → firefly-compatible FITS
+- `Scripts/Analysis/plot_results.py` — visualisation for UI
 
 ## BAVCL relationship
 
-FALCON uses BAVCL as the GPU vector platform. Domain-specific spectral code (convolution, HPF, fitter) lives in FALCON until BAVCL adds APIs — see `docs/BAVCL_FEATURE_REQUESTS.md`.
+FALCON uses BAVCL as the GPU vector platform. Domain-specific spectral code (convolution, HPF, fitter) lives in FALCON until BAVCL adds APIs — see `Documentation/BAVCL_FEATURE_REQUESTS.md`.
 
 ## Legacy mapping
 
@@ -65,11 +64,11 @@ FALCON uses BAVCL as the GPU vector platform. Domain-specific spectral code (con
 
 ## Test strategy
 
-- **Unit tests** — one class per firefly function (`StatisticsMath`, fitter, dust, mass-loss ISD)
-- **Golden JSON** in `tests/Falcon.Tests/TestData/` — strict rtol ~1e-5
+- **Unit tests** — one class per firefly function (`StatisticsMath`, fitter, dust, MassLoss ISD)
+- **Golden JSON** in `Falcon.Tests/TestData/` — strict rtol ~1e-5
 - **Tiers:** `dotnet test` (CPU, always) vs `--filter Category=Integration` (GPU + MaStar FITS assets)
 - **Target:** 100+ tests (currently 180+)
-- Regenerate refs: `python Scripts/generate_golden_refs.py`
+- Regenerate refs: `python Scripts/Golden/generate_golden_refs.py`
 
 ## Firefly parity (north star)
 
@@ -82,7 +81,7 @@ Canonical reference: `C:\Users\marce\Repos\firefly\firefly_fitter.py` and `firef
 | Iterate cap | `fit_cap` commented out (no cap) | `fit_per_iteration_cap` enforced (default 1000) |
 | Dust | `determine_attenuation` → `fitter`, then main `fitter` | `DustService.DetermineAttenuation` + orchestrator fit |
 
-Parity checks: set `FALCON_FIT_TRACE=1`, run FALCON and `Scripts/run_firefly_fit_trace.py`, then `Scripts/compare_fit_traces.py`. FIT_TRACE emits `fitter_summary` with `index_count`, `iterate_count`, `mix_eval_count`.
+Parity checks: set `FALCON_FIT_TRACE=1`, run FALCON and `Scripts/Benchmarking/run_firefly_fit_trace.py`, then `Scripts/Benchmarking/compare_fit_traces.py`. FIT_TRACE emits `fitter_summary` with `index_count`, `iterate_count`, `mix_eval_count`.
 
 Config: `fitting.use_gpu_evaluator` (default `false`), `fitting.experimental_mix_search` (default `false`).
 
@@ -91,3 +90,4 @@ Config: `fitting.use_gpu_evaluator` (default `false`), `fitting.experimental_mix
 - `fitting.engine: firefly` (default) — `FireflyFitOrchestrator` full pipeline
 - `fitting.engine: legacy_gpu` — original `GenerateInterpSSP` GPU chi² path
 - `fitting.legacy_gpu_fallback: true` — fall back to GPU path if firefly path fails
+

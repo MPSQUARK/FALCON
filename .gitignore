@@ -348,6 +348,5 @@ healthchecksdb
 .build-ui-test/
 Data/
 Log.txt
-assets/**/*.h5
-assets/stellar-population-models/*.h5
-assets/dust-maps/*.h5
+Assets/StellarPopulationModels/*.h5
+Assets/DustMaps/*.h5

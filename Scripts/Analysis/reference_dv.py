@@ -2,10 +2,10 @@
 """Print firefly spectral_resolution.dv for the MaStar model wavelength grid.
 
 Usage (from firefly repo with STELLARPOPMODELS_DIR set):
-  python ../FALCON/Scripts/reference_dv.py
+  python ../FALCON/Scripts/Analysis/reference_dv.py
 
 Or standalone with numpy only (matches firefly_instrument.spectrum_velocity_scale):
-  python reference_dv.py --numpy-only --wave-file path/to/wavelength.npy
+  python Scripts/Analysis/reference_dv.py --numpy-only --wave-file path/to/wavelength.npy
 """
 from __future__ import annotations
 
@@ -34,7 +34,7 @@ def load_mastar_wavelength() -> np.ndarray:
 
     models_dir = os.environ.get(
         "FALCON_MODELS",
-        os.path.join(_FALCON_ROOT, "assets", "stellar-population-models"),
+        os.path.join(_FALCON_ROOT, "Assets", "StellarPopulationModels"),
     )
     fits_path = os.path.join(models_dir, "MaStar_SSP_v0.2.fits.gz")
     if not os.path.isfile(fits_path):
@@ -83,3 +83,4 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
