@@ -18,6 +18,8 @@ venv/
 *.userprefs
 
 # Build results
+[Bb]uild/
+[Bb]uild-*/*
 [Dd]ebug/
 [Dd]ebugPublic/
 [Rr]elease/
@@ -343,6 +345,8 @@ ASALocalRun/
 # BeatPulse healthcheck temp database
 healthchecksdb
 /output/
+.build-ui-test/
+Data/
 Log.txt
 assets/**/*.h5
 assets/stellar-population-models/*.h5
